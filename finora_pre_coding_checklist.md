@@ -4,23 +4,29 @@
 
 ### Core Features
 
--   [ ] Accounts (manual management)
--   [ ] Transactions (income / expense / transfer)
--   [ ] Recurring transactions
--   [ ] Monthly category analytics
--   [ ] Budget predictions per category
--   [ ] Goals with contributions
--   [ ] Goal auto-completion logic
--   [ ] Export / Import
+-   [x] Accounts (manual management)
+-   [x] Transactions (income / expense / transfer)
+-   [x] Recurring transactions
+-   [x] Monthly category analytics
+-   [x] Budget predictions per category
+-   [x] Goals with contributions
+-   [x] Goal auto-completion logic
+-   [x] Export / Import
 
 ### Explicitly NOT in V1
 
--   [ ] Multi-currency
--   [ ] Bank API integration
--   [ ] Cloud sync
--   [ ] Notifications
--   [ ] Multi-user
--   [ ] Advanced investment tracking
+-   [x] Multi-currency
+-   [x] Bank API integration
+-   [x] Cloud sync
+-   [x] Notifications
+-   [x] Multi-user
+-   [x] Advanced investment tracking
+
+### MVP Scope Sign-off
+
+-   [x] MVP features confirmed
+-   [x] V1 exclusions confirmed
+-   [x] Sign-off recorded: 2026-02-12 11:04 (local)
 
 ------------------------------------------------------------------------
 
@@ -28,53 +34,58 @@
 
 ### App Identity
 
--   [ ] Final app name: Finora
--   [ ] Organization ID confirmed
--   [ ] Package name finalized
+-   [x] Final app name: Finora
+-   [x] Organization ID confirmed: com.wolff.finora
+-   [x] Package name finalized: com.wolff.finora.finora
+-   [x] Android applicationId: com.wolff.finora.finora
+-   [x] iOS bundle identifier: com.wolff.finora.finora
+-   [x] Web app ID: finora
 
 ### Platforms
 
--   [ ] Android
--   [ ] iOS
--   [ ] Web
+-   [x] Android
+-   [x] iOS
+-   [x] Web
+-   [x] Android min SDK: 24 (Android 7.0)
+-   [x] iOS minimum: 13.0
+-   [x] Web targets: Evergreen (Chrome, Edge, Firefox, Safari)
 
 ### State Management
 
--   [ ] Riverpod 2.x
--   [ ] AsyncNotifier for DB state
--   [ ] Derived providers for calculations
--   [ ] Global selectedMonthProvider
+-   [x] Riverpod 2.x
+-   [x] AsyncNotifier for DB state
+-   [x] Derived providers for calculations
+-   [x] Global selectedMonthProvider
 
 ### Database
 
--   [ ] Drift
--   [ ] Single database file
--   [ ] Migration versioning strategy defined
--   [ ] Soft delete using isDeleted
+-   [x] Drift
+-   [x] Single database file
+-   [x] Migration versioning strategy defined: sequential schemaVersion ints
+-   [x] Soft delete using isDeleted
 
 ------------------------------------------------------------------------
 
 ## 3. Architecture Rules
 
--   [ ] Domain layer contains no Flutter imports
--   [ ] Domain layer contains no Drift imports
--   [ ] Repositories abstract database
--   [ ] Mappers convert DB ↔ Domain
--   [ ] Business logic only in domain services
--   [ ] UI contains zero calculation logic
+-   [x] Domain layer contains no Flutter imports
+-   [x] Domain layer contains no Drift imports
+-   [x] Repositories abstract database
+-   [x] Mappers convert DB ↔ Domain
+-   [x] Business logic only in domain services
+-   [x] UI contains zero calculation logic
+-   [x] Verification command: `rg --glob "lib/features/**/domain/**" -n "package:flutter|package:drift"`
 
 ------------------------------------------------------------------------
-
 ## 4. Calculation Engine Plan
 
--   [ ] MonthlySummaryCalculator
--   [ ] CategoryAnalyticsCalculator
--   [ ] BudgetVarianceCalculator
--   [ ] GoalProgressCalculator
--   [ ] NetWorthCalculator
+-   [x] MonthlySummaryCalculator
+-   [x] CategoryAnalyticsCalculator
+-   [x] BudgetVarianceCalculator
+-   [x] GoalProgressCalculator
+-   [x] NetWorthCalculator
 
 ------------------------------------------------------------------------
-
 ## 5. Goal Logic Rules
 
 -   [ ] If saved ≥ target → mark completed
@@ -87,7 +98,7 @@
 
 ## 6. Export / Import Strategy
 
--   [ ] JSON export of domain models
+-   [x] JSON export of domain models
 -   [ ] Encrypted JSON (optional)
 -   [ ] SQLite file export (optional)
 
@@ -95,51 +106,46 @@
 
 ## 7. UI System Decisions
 
--   [ ] Material 3 enabled
--   [ ] Dark mode default decided
--   [ ] Chart library chosen
--   [ ] Currency formatting strategy
--   [ ] Consistent month selector widget
+-   [x] Material 3 enabled
+-   [x] Dark mode default decided: System
+-   [x] Chart library chosen: syncfusion_flutter_charts
+-   [x] Currency formatting strategy: intl locale + app currency, negatives with minus sign
+-   [x] Consistent month selector widget
 
 ------------------------------------------------------------------------
-
 ## 8. Error Handling Strategy
 
--   [ ] AsyncValue error handling
--   [ ] Repository-level error safety
--   [ ] Global error handler (optional)
+-   [x] AsyncValue error handling
+-   [x] Repository-level error safety
+-   [x] Global error handler enabled
 
 ------------------------------------------------------------------------
-
 ## 9. Testing Strategy
 
--   [ ] Goal completion tests
--   [ ] Monthly calculation tests
--   [ ] Budget variance tests
--   [ ] Repository unit tests
+-   [x] Goal completion tests
+-   [x] Monthly calculation tests
+-   [x] Budget variance tests
+-   [x] Repository unit tests
 
 ------------------------------------------------------------------------
-
 ## 10. Performance Guardrails
 
--   [ ] Lazy loading transactions by month
--   [ ] Index on date
--   [ ] Index on accountId
--   [ ] Index on categoryId
--   [ ] Avoid loading all transactions at once
+-   [x] Lazy loading transactions by month
+-   [x] Index on date
+-   [x] Index on accountId
+-   [x] Index on categoryId
+-   [x] Avoid loading all transactions at once
 
 ------------------------------------------------------------------------
-
 ## 11. UX Consistency Rules
 
--   [ ] Centralized money formatting utility
--   [ ] Income color standardized
--   [ ] Expense color standardized
--   [ ] Transfer neutral color
--   [ ] Always show active month at top
+-   [x] Centralized money formatting utility
+-   [x] Income color standardized (green)
+-   [x] Expense color standardized (red)
+-   [x] Transfer neutral color (gray/blue)
+-   [x] Always show active month at top
 
 ------------------------------------------------------------------------
-
 ## 12. Build Order Plan
 
 1.  Database schema
