@@ -5,6 +5,7 @@ import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/daos/account_dao.dart';
 import 'package:finora/core/database/daos/category_dao.dart';
 import 'package:finora/core/database/daos/transaction_dao.dart';
+import 'package:finora/core/errors/repository_error.dart';
 import 'package:finora/features/accounts/data/account_repository_drift.dart';
 import 'package:finora/features/accounts/domain/account.dart' as domain;
 import 'package:finora/features/categories/data/category_repository_drift.dart';
@@ -26,7 +27,9 @@ void main() {
   });
 
   tearDown(() async {
-    await db.close();
+    try {
+      await db.close();
+    } catch (_) {}
   });
 
   test('watchRecent/watchByMonth/totals ignore transfers and soft-deleted', () async {
@@ -155,4 +158,50 @@ void main() {
         await transactionRepository.monthlyExpenseTotal(2026, 2);
     expect(expenseAfterDelete, 0);
   });
+
+  test('monthlyTotals wraps DAO failure as RepositoryError', () async {
+    final failingRepository = TransactionRepositoryDrift(
+      _ThrowingTransactionDaoForTotals(db),
+    );
+
+    await expectLater(
+      failingRepository.monthlyTotals(2026, 2),
+      throwsA(isA<RepositoryError>()),
+    );
+  });
+
+  test('watchRecent wraps stream failure as RepositoryError', () async {
+    final failingRepository = TransactionRepositoryDrift(
+      _ThrowingTransactionDaoForRecent(db),
+    );
+
+    await expectLater(
+      failingRepository.watchRecent(5).first,
+      throwsA(isA<RepositoryError>()),
+    );
+  });
+}
+
+class _ThrowingTransactionDaoForTotals extends TransactionDao {
+  _ThrowingTransactionDaoForTotals(super.db);
+
+  @override
+  Future<MonthlyTotalsRow> monthlyTotals(
+    int year,
+    int month, {
+    String? accountId,
+    String? categoryId,
+    String? type,
+  }) {
+    throw StateError('totals failed');
+  }
+}
+
+class _ThrowingTransactionDaoForRecent extends TransactionDao {
+  _ThrowingTransactionDaoForRecent(super.db);
+
+  @override
+  Stream<List<Transaction>> watchRecent(int limit, {String? accountId}) {
+    return Stream<List<Transaction>>.error(StateError('watch recent failed'));
+  }
 }

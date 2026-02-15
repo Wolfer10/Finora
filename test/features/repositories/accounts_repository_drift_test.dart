@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/daos/account_dao.dart';
+import 'package:finora/core/errors/repository_error.dart';
 import 'package:finora/features/accounts/data/account_repository_drift.dart';
 import 'package:finora/features/accounts/domain/account.dart' as domain;
 
@@ -16,7 +17,9 @@ void main() {
   });
 
   tearDown(() async {
-    await db.close();
+    try {
+      await db.close();
+    } catch (_) {}
   });
 
   test('create + update + softDelete lifecycle', () async {
@@ -54,4 +57,54 @@ void main() {
     final afterDelete = await repository.watchAllActive().first;
     expect(afterDelete, isEmpty);
   });
+
+  test('create wraps DAO failure as RepositoryError', () async {
+    final failingRepository = AccountRepositoryDrift(
+      _ThrowingAccountDaoForCreate(db),
+    );
+
+    final now = DateTime(2026, 2, 12, 10, 0);
+    final call = failingRepository.create(
+      domain.Account(
+        id: 'acc-fail',
+        name: 'Fail',
+        type: domain.AccountType.cash,
+        initialBalance: 0,
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      ),
+    );
+
+    await expectLater(call, throwsA(isA<RepositoryError>()));
+  });
+
+  test('watchAllActive wraps stream failure as RepositoryError', () async {
+    final failingRepository = AccountRepositoryDrift(
+      _ThrowingAccountDaoForWatch(db),
+    );
+
+    await expectLater(
+      failingRepository.watchAllActive().first,
+      throwsA(isA<RepositoryError>()),
+    );
+  });
+}
+
+class _ThrowingAccountDaoForCreate extends AccountDao {
+  _ThrowingAccountDaoForCreate(super.db);
+
+  @override
+  Future<void> upsert(AccountsCompanion companion) {
+    throw StateError('create failed');
+  }
+}
+
+class _ThrowingAccountDaoForWatch extends AccountDao {
+  _ThrowingAccountDaoForWatch(super.db);
+
+  @override
+  Stream<List<Account>> watchAll({bool activeOnly = true}) {
+    return Stream<List<Account>>.error(StateError('watch failed'));
+  }
 }

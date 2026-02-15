@@ -2,6 +2,10 @@
 
 Finora is a personal finance app that helps you track expenses, manage accounts, plan goals, and visualize spending insights — all in one place with smart predictions and clean analytics.
 
+## Architecture Notes
+
+- Error handling strategy (S2.6): `docs/error_handling_strategy.md`
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.

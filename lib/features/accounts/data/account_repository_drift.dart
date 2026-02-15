@@ -3,6 +3,7 @@
 import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/daos/account_dao.dart';
 import 'package:finora/core/database/enum_codecs.dart';
+import 'package:finora/core/errors/repository_error.dart';
 import 'package:finora/features/accounts/domain/account.dart' as domain;
 import 'package:finora/features/accounts/domain/account_repository.dart';
 
@@ -13,24 +14,32 @@ class AccountRepositoryDrift implements AccountRepository {
 
   @override
   Future<void> create(domain.Account account) async {
-    await _dao.upsert(_toCompanion(account));
+    await guardRepositoryCall('AccountRepository.create', () {
+      return _dao.upsert(_toCompanion(account));
+    });
   }
 
   @override
   Future<void> update(domain.Account account) async {
-    await _dao.upsert(_toCompanion(account));
+    await guardRepositoryCall('AccountRepository.update', () {
+      return _dao.upsert(_toCompanion(account));
+    });
   }
 
   @override
   Future<void> softDelete(String id) async {
-    await _dao.softDeleteById(id, DateTime.now());
+    await guardRepositoryCall('AccountRepository.softDelete', () {
+      return _dao.softDeleteById(id, DateTime.now());
+    });
   }
 
   @override
   Stream<List<domain.Account>> watchAll({bool activeOnly = true}) {
-    return _dao.watchAll(activeOnly: activeOnly).map(
-          (rows) => rows.map(_toDomain).toList(growable: false),
-        );
+    return guardRepositoryStream('AccountRepository.watchAll', () {
+      return _dao.watchAll(activeOnly: activeOnly).map(
+            (rows) => rows.map(_toDomain).toList(growable: false),
+          );
+    });
   }
 
   @override

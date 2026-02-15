@@ -3,6 +3,7 @@
 import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/daos/category_dao.dart';
 import 'package:finora/core/database/enum_codecs.dart';
+import 'package:finora/core/errors/repository_error.dart';
 import 'package:finora/features/categories/domain/category.dart' as domain;
 import 'package:finora/features/categories/domain/category_repository.dart';
 
@@ -13,29 +14,39 @@ class CategoryRepositoryDrift implements CategoryRepository {
 
   @override
   Future<void> create(domain.Category category) async {
-    await _dao.upsert(_toCompanion(category));
+    await guardRepositoryCall('CategoryRepository.create', () {
+      return _dao.upsert(_toCompanion(category));
+    });
   }
 
   @override
   Future<void> update(domain.Category category) async {
-    await _dao.upsert(_toCompanion(category));
+    await guardRepositoryCall('CategoryRepository.update', () {
+      return _dao.upsert(_toCompanion(category));
+    });
   }
 
   @override
   Future<void> softDelete(String id) async {
-    await _dao.softDeleteById(id, DateTime.now());
+    await guardRepositoryCall('CategoryRepository.softDelete', () {
+      return _dao.softDeleteById(id, DateTime.now());
+    });
   }
 
   @override
   Future<void> seedDefaultsIfEmpty() async {
-    await _dao.seedDefaultsIfEmpty();
+    await guardRepositoryCall('CategoryRepository.seedDefaultsIfEmpty', () {
+      return _dao.seedDefaultsIfEmpty();
+    });
   }
 
   @override
   Stream<List<domain.Category>> watchAll({bool activeOnly = true}) {
-    return _dao.watchAll(activeOnly: activeOnly).map(
-          (rows) => rows.map(_toDomain).toList(growable: false),
-        );
+    return guardRepositoryStream('CategoryRepository.watchAll', () {
+      return _dao.watchAll(activeOnly: activeOnly).map(
+            (rows) => rows.map(_toDomain).toList(growable: false),
+          );
+    });
   }
 
   @override

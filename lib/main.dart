@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:finora/core/errors/global_error_handler.dart';
 
 void main() {
-  runApp(const MyApp());
+  WidgetsFlutterBinding.ensureInitialized();
+  installGlobalErrorHandlers();
+  runWithGlobalErrorGuard<void>(() {
+    runApp(const MyApp());
+  });
 }
 
 class MyApp extends StatelessWidget {

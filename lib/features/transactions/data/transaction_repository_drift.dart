@@ -3,6 +3,7 @@
 import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/daos/transaction_dao.dart';
 import 'package:finora/core/database/enum_codecs.dart';
+import 'package:finora/core/errors/repository_error.dart';
 import 'package:finora/features/transactions/domain/transaction.dart' as domain;
 import 'package:finora/features/transactions/domain/transaction_repository.dart';
 
@@ -13,24 +14,32 @@ class TransactionRepositoryDrift implements TransactionRepository {
 
   @override
   Future<void> create(domain.Transaction transaction) async {
-    await _dao.upsert(_toCompanion(transaction));
+    await guardRepositoryCall('TransactionRepository.create', () {
+      return _dao.upsert(_toCompanion(transaction));
+    });
   }
 
   @override
   Future<void> update(domain.Transaction transaction) async {
-    await _dao.upsert(_toCompanion(transaction));
+    await guardRepositoryCall('TransactionRepository.update', () {
+      return _dao.upsert(_toCompanion(transaction));
+    });
   }
 
   @override
   Future<void> softDelete(String id) async {
-    await _dao.softDeleteById(id, DateTime.now());
+    await guardRepositoryCall('TransactionRepository.softDelete', () {
+      return _dao.softDeleteById(id, DateTime.now());
+    });
   }
 
   @override
   Stream<List<domain.Transaction>> watchRecent(int limit, {String? accountId}) {
-    return _dao.watchRecent(limit, accountId: accountId).map(
-          (rows) => rows.map(_toDomain).toList(growable: false),
-        );
+    return guardRepositoryStream('TransactionRepository.watchRecent', () {
+      return _dao.watchRecent(limit, accountId: accountId).map(
+            (rows) => rows.map(_toDomain).toList(growable: false),
+          );
+    });
   }
 
   @override
@@ -41,17 +50,19 @@ class TransactionRepositoryDrift implements TransactionRepository {
     String? categoryId,
     domain.TransactionType? type,
   }) {
-    return _dao
-        .watchByMonth(
-          year,
-          month,
-          accountId: accountId,
-          categoryId: categoryId,
-          type: type == null ? null : encodeTransactionType(type),
-        )
-        .map(
-          (rows) => rows.map(_toDomain).toList(growable: false),
-        );
+    return guardRepositoryStream('TransactionRepository.watchByMonth', () {
+      return _dao
+          .watchByMonth(
+            year,
+            month,
+            accountId: accountId,
+            categoryId: categoryId,
+            type: type == null ? null : encodeTransactionType(type),
+          )
+          .map(
+            (rows) => rows.map(_toDomain).toList(growable: false),
+          );
+    });
   }
 
   @override
@@ -62,14 +73,16 @@ class TransactionRepositoryDrift implements TransactionRepository {
     String? categoryId,
     domain.TransactionType? type,
   }) async {
-    final totals = await monthlyTotals(
-      year,
-      month,
-      accountId: accountId,
-      categoryId: categoryId,
-      type: type,
-    );
-    return totals.incomeTotal;
+    return guardRepositoryCall('TransactionRepository.monthlyIncomeTotal', () async {
+      final totals = await monthlyTotals(
+        year,
+        month,
+        accountId: accountId,
+        categoryId: categoryId,
+        type: type,
+      );
+      return totals.incomeTotal;
+    });
   }
 
   @override
@@ -80,14 +93,16 @@ class TransactionRepositoryDrift implements TransactionRepository {
     String? categoryId,
     domain.TransactionType? type,
   }) async {
-    final totals = await monthlyTotals(
-      year,
-      month,
-      accountId: accountId,
-      categoryId: categoryId,
-      type: type,
-    );
-    return totals.expenseTotal;
+    return guardRepositoryCall('TransactionRepository.monthlyExpenseTotal', () async {
+      final totals = await monthlyTotals(
+        year,
+        month,
+        accountId: accountId,
+        categoryId: categoryId,
+        type: type,
+      );
+      return totals.expenseTotal;
+    });
   }
 
   @override
@@ -98,17 +113,19 @@ class TransactionRepositoryDrift implements TransactionRepository {
     String? categoryId,
     domain.TransactionType? type,
   }) async {
-    final row = await _dao.monthlyTotals(
-      year,
-      month,
-      accountId: accountId,
-      categoryId: categoryId,
-      type: type == null ? null : encodeTransactionType(type),
-    );
-    return MonthlyTotals(
-      incomeTotal: row.incomeTotal,
-      expenseTotal: row.expenseTotal,
-    );
+    return guardRepositoryCall('TransactionRepository.monthlyTotals', () async {
+      final row = await _dao.monthlyTotals(
+        year,
+        month,
+        accountId: accountId,
+        categoryId: categoryId,
+        type: type == null ? null : encodeTransactionType(type),
+      );
+      return MonthlyTotals(
+        incomeTotal: row.incomeTotal,
+        expenseTotal: row.expenseTotal,
+      );
+    });
   }
 
   TransactionsCompanion _toCompanion(domain.Transaction transaction) {
