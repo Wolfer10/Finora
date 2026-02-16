@@ -1,130 +1,187 @@
-import 'package:flutter/material.dart';
 import 'package:finora/core/errors/global_error_handler.dart';
+import 'package:finora/core/theme/app_theme.dart';
+import 'package:finora/core/theme/app_tokens.dart';
+import 'package:finora/core/utils/money_formatter.dart';
+import 'package:finora/core/widgets/finora_card.dart';
+import 'package:finora/core/widgets/finora_page_scaffold.dart';
+import 'package:finora/core/widgets/finora_skeleton.dart';
+import 'package:flutter/material.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  installGlobalErrorHandlers();
   runWithGlobalErrorGuard<void>(() {
-    runApp(const MyApp());
+    WidgetsFlutterBinding.ensureInitialized();
+    installGlobalErrorHandlers();
+    runApp(const FinoraApp());
   });
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class FinoraApp extends StatelessWidget {
+  const FinoraApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
-      theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-        useMaterial3: true,
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Finora',
+      theme: AppTheme.light(),
+      darkTheme: AppTheme.dark(),
+      themeMode: ThemeMode.system,
+      home: const DashboardShell(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class DashboardShell extends StatefulWidget {
+  const DashboardShell({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<DashboardShell> createState() => _DashboardShellState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _DashboardShellState extends State<DashboardShell> {
+  DateTime _selectedMonth = DateTime(2026, 2);
+  bool _showLoading = false;
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  void _onMonthChanged(DateTime month) => setState(() => _selectedMonth = month);
+  void _toggleLoading() => setState(() => _showLoading = !_showLoading);
+
+  Future<void> _openAddTransactionDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Transaction'),
+        content: const Text('Shared dialog motion and theme styles are active.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+    return FinoraPageScaffold(
+      title: 'Overview',
+      subtitle: 'Epic 8 widget system baseline',
+      selectedMonth: _selectedMonth,
+      onMonthChanged: _onMonthChanged,
+      trailing: Wrap(
+        spacing: AppSpacing.sm,
+        runSpacing: AppSpacing.sm,
+        children: [
+          OutlinedButton(
+            onPressed: _toggleLoading,
+            child: Text(_showLoading ? 'Show Data' : 'Show Loading'),
+          ),
+          FilledButton(
+            onPressed: _openAddTransactionDialog,
+            child: const Text('Add Transaction'),
+          ),
+        ],
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text(
-              'You have pushed the button this many times:',
-            ),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
-            ),
-          ],
-        ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final useSplit = constraints.maxWidth >= 900;
+          return AnimatedSwitcher(
+            duration: AppMotion.normal,
+            switchInCurve: AppMotion.emphasized,
+            switchOutCurve: AppMotion.standard,
+            child: useSplit
+                ? Row(
+                    key: const ValueKey('split'),
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: _BalancePanel(loading: _showLoading)),
+                      const SizedBox(width: AppSpacing.lg),
+                      Expanded(child: _InsightPanel(loading: _showLoading)),
+                    ],
+                  )
+                : Column(
+                    key: const ValueKey('stacked'),
+                    children: [
+                      _BalancePanel(loading: _showLoading),
+                      const SizedBox(height: AppSpacing.lg),
+                      _InsightPanel(loading: _showLoading),
+                    ],
+                  ));
+        },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
+    );
+  }
+}
+
+class _BalancePanel extends StatelessWidget {
+  const _BalancePanel({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return FinoraCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: loading
+            ? const [
+                FinoraSkeletonBox(width: 140, height: 20),
+                SizedBox(height: AppSpacing.sm),
+                FinoraSkeletonBox(width: 200, height: 40),
+                SizedBox(height: AppSpacing.md),
+                FinoraSkeletonBox(width: 120, height: 16),
+              ]
+            : [
+                Text('Net Balance', style: textTheme.titleLarge),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  MoneyFormatter.format(12420.80),
+                  style: textTheme.headlineLarge,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  '${MoneyFormatter.format(4.2, showPlus: true, decimalDigits: 1, currencySymbol: '')}% vs last month',
+                  style: textTheme.bodyLarge?.copyWith(color: AppColors.income),
+                ),
+              ],
+      ),
+    );
+  }
+}
+
+class _InsightPanel extends StatelessWidget {
+  const _InsightPanel({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return FinoraCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: loading
+            ? const [
+                FinoraSkeletonBox(width: 120, height: 20),
+                SizedBox(height: AppSpacing.sm),
+                FinoraSkeletonBox(width: 260, height: 26),
+                SizedBox(height: AppSpacing.md),
+                FinoraSkeletonBox(width: 280, height: 16),
+              ]
+            : [
+                Text('Top Insight', style: textTheme.titleLarge),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Dining expenses increased this month.',
+                  style: textTheme.titleLarge,
+                ),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  'Use this panel for empty/loading/error variants in Epic 3.',
+                  style: textTheme.bodyMedium,
+                ),
+              ],
+      ),
     );
   }
 }
