@@ -5,6 +5,7 @@ Finora is a personal finance app that helps you track expenses, manage accounts,
 ## Architecture Notes
 
 - Error handling strategy (S2.6): `docs/error_handling_strategy.md`
+- UI system and UX consistency (E8): `docs/epic_e8_ui_system.md`
 
 ## Getting Started
 
