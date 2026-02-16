@@ -109,7 +109,7 @@
 -   [x] Material 3 enabled
 -   [x] Dark mode default decided: System
 -   [x] Chart library chosen: syncfusion_flutter_charts
--   [x] Currency formatting strategy: intl locale + app currency, negatives with minus sign
+-   [x] Currency formatting strategy: intl locale + app currency (V1: HUF), negatives with minus sign
 -   [x] Consistent month selector widget
 
 ------------------------------------------------------------------------
