@@ -1,5 +1,7 @@
 enum GoalPriority { high, medium, low }
 
+const Object _unsetCompletedAt = Object();
+
 class Goal {
   const Goal({
     required this.id,
@@ -32,7 +34,7 @@ class Goal {
     double? savedAmount,
     GoalPriority? priority,
     bool? completed,
-    DateTime? completedAt,
+    Object? completedAt = _unsetCompletedAt,
     DateTime? createdAt,
     DateTime? updatedAt,
     bool? isDeleted,
@@ -44,7 +46,9 @@ class Goal {
       savedAmount: savedAmount ?? this.savedAmount,
       priority: priority ?? this.priority,
       completed: completed ?? this.completed,
-      completedAt: completedAt ?? this.completedAt,
+      completedAt: completedAt == _unsetCompletedAt
+          ? this.completedAt
+          : completedAt as DateTime?,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       isDeleted: isDeleted ?? this.isDeleted,

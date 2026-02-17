@@ -4,8 +4,9 @@ import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/daos/goal_dao.dart';
 import 'package:finora/core/database/enum_codecs.dart';
 import 'package:finora/core/errors/repository_error.dart';
-import 'package:finora/features/goals/domain/goal.dart' as domain;
-import 'package:finora/features/goals/domain/goal_contribution.dart' as domain;
+import 'package:finora/features/goals/domain/goal.dart' as goal_domain;
+import 'package:finora/features/goals/domain/goal_contribution.dart'
+    as contribution_domain;
 import 'package:finora/features/goals/domain/goal_repository.dart';
 
 class GoalRepositoryDrift implements GoalRepository {
@@ -14,14 +15,14 @@ class GoalRepositoryDrift implements GoalRepository {
   final GoalDao _dao;
 
   @override
-  Future<void> createGoal(domain.Goal goal) async {
+  Future<void> createGoal(goal_domain.Goal goal) async {
     await guardRepositoryCall('GoalRepository.createGoal', () {
       return _dao.upsertGoal(_toGoalCompanion(goal));
     });
   }
 
   @override
-  Future<void> updateGoal(domain.Goal goal) async {
+  Future<void> updateGoal(goal_domain.Goal goal) async {
     await guardRepositoryCall('GoalRepository.updateGoal', () {
       return _dao.upsertGoal(_toGoalCompanion(goal));
     });
@@ -35,7 +36,7 @@ class GoalRepositoryDrift implements GoalRepository {
   }
 
   @override
-  Stream<List<domain.Goal>> watchGoals({bool activeOnly = true}) {
+  Stream<List<goal_domain.Goal>> watchGoals({bool activeOnly = true}) {
     return guardRepositoryStream('GoalRepository.watchGoals', () {
       return _dao.watchGoals(activeOnly: activeOnly).map(
             (rows) => rows.map(_toGoalDomain).toList(growable: false),
@@ -44,19 +45,23 @@ class GoalRepositoryDrift implements GoalRepository {
   }
 
   @override
-  Stream<List<domain.Goal>> watchGoalsActive() {
+  Stream<List<goal_domain.Goal>> watchGoalsActive() {
     return watchGoals(activeOnly: true);
   }
 
   @override
-  Future<void> addContribution(domain.GoalContribution contribution) async {
+  Future<void> addContribution(
+    contribution_domain.GoalContribution contribution,
+  ) async {
     await guardRepositoryCall('GoalRepository.addContribution', () {
       return _dao.upsertContribution(_toContributionCompanion(contribution));
     });
   }
 
   @override
-  Future<void> updateContribution(domain.GoalContribution contribution) async {
+  Future<void> updateContribution(
+    contribution_domain.GoalContribution contribution,
+  ) async {
     await guardRepositoryCall('GoalRepository.updateContribution', () {
       return _dao.upsertContribution(_toContributionCompanion(contribution));
     });
@@ -70,7 +75,7 @@ class GoalRepositoryDrift implements GoalRepository {
   }
 
   @override
-  Stream<List<domain.GoalContribution>> watchContributionsByGoal(
+  Stream<List<contribution_domain.GoalContribution>> watchContributionsByGoal(
     String goalId, {
     bool activeOnly = true,
   }) {
@@ -81,7 +86,7 @@ class GoalRepositoryDrift implements GoalRepository {
     });
   }
 
-  GoalsCompanion _toGoalCompanion(domain.Goal goal) {
+  GoalsCompanion _toGoalCompanion(goal_domain.Goal goal) {
     return GoalsCompanion.insert(
       id: goal.id,
       name: goal.name,
@@ -97,7 +102,7 @@ class GoalRepositoryDrift implements GoalRepository {
   }
 
   GoalContributionsCompanion _toContributionCompanion(
-    domain.GoalContribution contribution,
+    contribution_domain.GoalContribution contribution,
   ) {
     return GoalContributionsCompanion.insert(
       id: contribution.id,
@@ -111,8 +116,8 @@ class GoalRepositoryDrift implements GoalRepository {
     );
   }
 
-  domain.Goal _toGoalDomain(Goal row) {
-    return domain.Goal(
+  goal_domain.Goal _toGoalDomain(Goal row) {
+    return goal_domain.Goal(
       id: row.id,
       name: row.name,
       targetAmount: row.targetAmount,
@@ -126,8 +131,8 @@ class GoalRepositoryDrift implements GoalRepository {
     );
   }
 
-  domain.GoalContribution _toContributionDomain(GoalContribution row) {
-    return domain.GoalContribution(
+  contribution_domain.GoalContribution _toContributionDomain(GoalContribution row) {
+    return contribution_domain.GoalContribution(
       id: row.id,
       goalId: row.goalId,
       amount: row.amount,
