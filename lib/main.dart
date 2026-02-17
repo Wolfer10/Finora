@@ -5,6 +5,7 @@ import 'package:finora/core/errors/global_error_handler.dart';
 import 'package:finora/core/theme/app_theme.dart';
 import 'package:finora/core/theme/app_tokens.dart';
 import 'package:finora/core/widgets/finora_page_scaffold.dart';
+import 'package:finora/features/goals/presentation/goals_screen.dart';
 import 'package:finora/features/transactions/presentation/dashboard_overview.dart';
 import 'package:finora/features/transactions/presentation/transactions_providers.dart';
 import 'package:finora/features/transactions/presentation/transactions_screen.dart';
@@ -46,10 +47,15 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
   Widget build(BuildContext context) {
     final bootstrap = ref.watch(transactionBootstrapProvider);
     final selectedMonth = ref.watch(selectedMonthProvider);
+    final pageTitle = switch (_selectedTab) {
+      0 => 'Overview',
+      1 => 'Transactions',
+      _ => 'Goals',
+    };
 
     return FinoraPageScaffold(
-      title: _selectedTab == 0 ? 'Overview' : 'Transactions',
-      subtitle: 'Epic 3 transactions vertical slice',
+      title: pageTitle,
+      subtitle: 'Epic 4 goals and surplus allocation',
       selectedMonth: selectedMonth,
       onMonthChanged: (month) {
         ref.read(selectedMonthProvider.notifier).state = DateTime(
@@ -71,15 +77,31 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
             selected: _selectedTab == 1,
             onSelected: (_) => setState(() => _selectedTab = 1),
           ),
-          FilledButton(
-            onPressed: () async {
-              await showDialog<void>(
-                context: context,
-                builder: (context) => const AddExpenseDialog(),
-              );
-            },
-            child: const Text('Add Expense'),
+          ChoiceChip(
+            label: const Text('Goals'),
+            selected: _selectedTab == 2,
+            onSelected: (_) => setState(() => _selectedTab = 2),
           ),
+          if (_selectedTab == 1)
+            FilledButton(
+              onPressed: () async {
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) => const AddExpenseDialog(),
+                );
+              },
+              child: const Text('Add Expense'),
+            ),
+          if (_selectedTab == 2)
+            FilledButton(
+              onPressed: () async {
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) => const AddGoalDialog(),
+                );
+              },
+              child: const Text('Add Goal'),
+            ),
           OutlinedButton(
             onPressed: () async {
               try {
@@ -119,7 +141,10 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
           if (_selectedTab == 0) {
             return const DashboardOverview();
           }
-          return const TransactionsScreen();
+          if (_selectedTab == 1) {
+            return const TransactionsScreen();
+          }
+          return const GoalsScreen();
         },
         loading: () => const Center(
           child: CircularProgressIndicator(),

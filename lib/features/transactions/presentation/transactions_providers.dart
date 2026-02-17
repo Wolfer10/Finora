@@ -13,9 +13,13 @@ import 'package:finora/features/categories/domain/category.dart'
     as category_domain;
 import 'package:finora/features/categories/domain/category_repository.dart';
 import 'package:finora/features/goals/data/goal_repository_drift.dart';
+import 'package:finora/features/goals/domain/add_goal_contribution_use_case.dart';
 import 'package:finora/features/goals/domain/allocate_surplus_use_case.dart';
 import 'package:finora/features/goals/domain/calculate_surplus_use_case.dart';
+import 'package:finora/features/goals/domain/goal.dart' as goal_domain;
 import 'package:finora/features/goals/domain/goal_completion_service.dart';
+import 'package:finora/features/goals/domain/goal_contribution.dart'
+    as contribution_domain;
 import 'package:finora/features/goals/domain/goal_repository.dart';
 import 'package:finora/features/transactions/data/transaction_repository_drift.dart';
 import 'package:finora/features/transactions/domain/add_expense_transaction_use_case.dart';
@@ -65,6 +69,14 @@ final allocateSurplusUseCaseProvider = Provider<AllocateSurplusUseCase>((ref) {
   return AllocateSurplusUseCase(repository, completionService);
 });
 
+final addGoalContributionUseCaseProvider = Provider<AddGoalContributionUseCase>((
+  ref,
+) {
+  final repository = ref.watch(goalRepositoryProvider);
+  final completionService = ref.watch(goalCompletionServiceProvider);
+  return AddGoalContributionUseCase(repository, completionService);
+});
+
 final addExpenseTransactionUseCaseProvider =
     Provider<AddExpenseTransactionUseCase>((ref) {
   final repository = ref.watch(transactionRepositoryProvider);
@@ -90,6 +102,10 @@ final selectedMonthProvider = StateProvider<DateTime>((ref) {
 final transactionNotifierProvider =
     NotifierProvider<TransactionNotifier, AsyncValue<void>>(
   TransactionNotifier.new,
+);
+
+final goalNotifierProvider = NotifierProvider<GoalNotifier, AsyncValue<void>>(
+  GoalNotifier.new,
 );
 
 class TransactionNotifier extends Notifier<AsyncValue<void>> {
@@ -147,6 +163,100 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
   }
 }
 
+class GoalNotifier extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  Future<void> createGoal({
+    required String name,
+    required double targetAmount,
+    required goal_domain.GoalPriority priority,
+  }) async {
+    if (targetAmount <= 0) {
+      throw ArgumentError.value(
+        targetAmount,
+        'targetAmount',
+        'must be greater than 0',
+      );
+    }
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final now = DateTime.now();
+      final normalizedName = name.trim();
+      final goal = goal_domain.Goal(
+        id: _generateId('goal'),
+        name: normalizedName,
+        targetAmount: targetAmount,
+        savedAmount: 0,
+        priority: priority,
+        completed: false,
+        completedAt: null,
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      );
+      await ref.read(goalRepositoryProvider).createGoal(goal);
+    });
+  }
+
+  Future<void> updateGoal({
+    required goal_domain.Goal goal,
+    required String name,
+    required double targetAmount,
+    required goal_domain.GoalPriority priority,
+  }) async {
+    if (targetAmount <= 0) {
+      throw ArgumentError.value(
+        targetAmount,
+        'targetAmount',
+        'must be greater than 0',
+      );
+    }
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final now = DateTime.now();
+      final updatedGoal = goal.copyWith(
+        name: name.trim(),
+        targetAmount: targetAmount,
+        priority: priority,
+        completed: goal.savedAmount >= targetAmount,
+        completedAt: goal.savedAmount >= targetAmount ? now : null,
+        updatedAt: now,
+      );
+      await ref.read(goalRepositoryProvider).updateGoal(updatedGoal);
+    });
+  }
+
+  Future<void> deleteGoal(String goalId) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(goalRepositoryProvider).softDeleteGoal(goalId);
+    });
+  }
+
+  Future<void> addContribution({
+    required String goalId,
+    required double amount,
+    String? note,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final input = AddGoalContributionInput(
+        goalId: goalId,
+        amount: amount,
+        date: DateTime.now(),
+        note: note?.trim().isEmpty ?? true ? null : note!.trim(),
+      );
+      await ref.read(addGoalContributionUseCaseProvider)(input);
+    });
+  }
+
+  static String _generateId(String prefix) {
+    final microseconds = DateTime.now().microsecondsSinceEpoch;
+    return '$prefix-$microseconds';
+  }
+}
+
 final transactionsByMonthProvider =
     StreamProvider<List<tx_domain.Transaction>>((ref) {
   final month = ref.watch(selectedMonthProvider);
@@ -181,6 +291,19 @@ final monthlyTotalsProvider = StreamProvider<MonthlyTotals>((ref) {
     return MonthlyTotals(incomeTotal: income, expenseTotal: expense);
   });
 });
+
+final goalsProvider = StreamProvider<List<goal_domain.Goal>>((ref) {
+  final repository = ref.watch(goalRepositoryProvider);
+  return repository.watchGoalsActive();
+});
+
+final goalContributionsProvider =
+    StreamProvider.family<List<contribution_domain.GoalContribution>, String>(
+  (ref, goalId) {
+    final repository = ref.watch(goalRepositoryProvider);
+    return repository.watchContributionsByGoal(goalId);
+  },
+);
 
 final activeAccountsProvider =
     StreamProvider<List<account_domain.Account>>((ref) {
