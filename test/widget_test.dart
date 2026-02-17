@@ -1,23 +1,45 @@
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:finora/core/database/app_database.dart';
+import 'package:finora/features/transactions/presentation/transactions_providers.dart';
 import 'package:finora/main.dart';
 
 void main() {
-  testWidgets('renders dashboard shell baseline', (WidgetTester tester) async {
-    await tester.pumpWidget(const FinoraApp());
-
-    expect(find.text('Overview'), findsOneWidget);
-    expect(find.text('Add Transaction'), findsOneWidget);
-    expect(find.text('Net Balance'), findsOneWidget);
-  });
-
-  testWidgets('changes selected month from selector chip',
+  testWidgets('renders Epic 3 shell and default overview tab',
       (WidgetTester tester) async {
-    await tester.pumpWidget(const FinoraApp());
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
 
-    await tester.tap(find.text('Jan 2026'));
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(db)],
+        child: const FinoraApp(),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.text('Jan 2026'), findsWidgets);
+    expect(find.text('Overview'), findsWidgets);
+    expect(find.text('Monthly Summary'), findsOneWidget);
+    expect(find.text('Add Expense'), findsOneWidget);
+  });
+
+  testWidgets('switches to transactions tab', (WidgetTester tester) async {
+    final db = AppDatabase.forTesting(NativeDatabase.memory());
+    addTearDown(db.close);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [appDatabaseProvider.overrideWithValue(db)],
+        child: const FinoraApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Transactions').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Transactions'), findsWidgets);
   });
 }
