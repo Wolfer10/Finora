@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/daos/account_dao.dart';
 import 'package:finora/core/database/daos/category_dao.dart';
+import 'package:finora/core/database/daos/goal_dao.dart';
 import 'package:finora/core/database/daos/transaction_dao.dart';
 import 'package:finora/features/accounts/data/account_repository_drift.dart';
 import 'package:finora/features/accounts/domain/account.dart' as account_domain;
@@ -11,6 +12,11 @@ import 'package:finora/features/categories/data/category_repository_drift.dart';
 import 'package:finora/features/categories/domain/category.dart'
     as category_domain;
 import 'package:finora/features/categories/domain/category_repository.dart';
+import 'package:finora/features/goals/data/goal_repository_drift.dart';
+import 'package:finora/features/goals/domain/allocate_surplus_use_case.dart';
+import 'package:finora/features/goals/domain/calculate_surplus_use_case.dart';
+import 'package:finora/features/goals/domain/goal_completion_service.dart';
+import 'package:finora/features/goals/domain/goal_repository.dart';
 import 'package:finora/features/transactions/data/transaction_repository_drift.dart';
 import 'package:finora/features/transactions/domain/add_expense_transaction_use_case.dart';
 import 'package:finora/features/transactions/domain/delete_transaction_use_case.dart';
@@ -37,6 +43,26 @@ final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return TransactionRepositoryDrift(TransactionDao(db));
+});
+
+final goalRepositoryProvider = Provider<GoalRepository>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return GoalRepositoryDrift(GoalDao(db));
+});
+
+final goalCompletionServiceProvider = Provider<GoalCompletionService>((ref) {
+  return GoalCompletionService();
+});
+
+final calculateSurplusUseCaseProvider = Provider<CalculateSurplusUseCase>((ref) {
+  final repository = ref.watch(transactionRepositoryProvider);
+  return CalculateSurplusUseCase(repository);
+});
+
+final allocateSurplusUseCaseProvider = Provider<AllocateSurplusUseCase>((ref) {
+  final repository = ref.watch(goalRepositoryProvider);
+  final completionService = ref.watch(goalCompletionServiceProvider);
+  return AllocateSurplusUseCase(repository, completionService);
 });
 
 final addExpenseTransactionUseCaseProvider =
@@ -92,6 +118,32 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
     state = await AsyncValue.guard(() async {
       await ref.read(deleteTransactionUseCaseProvider)(transactionId);
     });
+  }
+
+  Future<AllocateSurplusResult> closeMonth(DateTime month) async {
+    state = const AsyncLoading();
+    try {
+      final calculateSurplus = ref.read(calculateSurplusUseCaseProvider);
+      final allocateSurplus = ref.read(allocateSurplusUseCaseProvider);
+      final surplus = await calculateSurplus(
+        CalculateSurplusInput(
+          year: month.year,
+          month: month.month,
+        ),
+      );
+      final result = await allocateSurplus(
+        AllocateSurplusInput(
+          surplusAmount: surplus,
+          date: DateTime(month.year, month.month, 1),
+          note: 'Close month allocation',
+        ),
+      );
+      state = const AsyncData(null);
+      return result;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
   }
 }
 

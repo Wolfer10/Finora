@@ -80,6 +80,38 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
             },
             child: const Text('Add Expense'),
           ),
+          OutlinedButton(
+            onPressed: () async {
+              try {
+                final result = await ref
+                    .read(transactionNotifierProvider.notifier)
+                    .closeMonth(selectedMonth);
+                if (!context.mounted) {
+                  return;
+                }
+                final allocated = result.allocatedAmount.toStringAsFixed(2);
+                final createdCount = result.createdContributions.length;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Month closed. Allocated $allocated across $createdCount goal contributions.',
+                    ),
+                  ),
+                );
+              } catch (error) {
+                if (!context.mounted) {
+                  return;
+                }
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Close month failed: $error'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            child: const Text('Close Month'),
+          ),
         ],
       ),
       child: bootstrap.when(
