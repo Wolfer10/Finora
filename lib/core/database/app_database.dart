@@ -54,6 +54,15 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             'CREATE INDEX IF NOT EXISTS idx_monthly_predictions_is_deleted ON monthly_predictions(is_deleted)',
           );
+          // S6.1: single-row app settings table.
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS app_settings (
+              id INTEGER PRIMARY KEY CHECK (id = 1),
+              currency_code TEXT NOT NULL,
+              currency_symbol TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+          ''');
         },
       );
 }

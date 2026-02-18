@@ -12,6 +12,7 @@ import 'package:finora/features/categories/data/category_repository_drift.dart';
 import 'package:finora/features/categories/domain/category.dart'
     as category_domain;
 import 'package:finora/features/categories/domain/category_repository.dart';
+import 'package:finora/features/data_transfer/domain/json_backup_service.dart';
 import 'package:finora/features/goals/data/goal_repository_drift.dart';
 import 'package:finora/features/goals/domain/add_goal_contribution_use_case.dart';
 import 'package:finora/features/goals/domain/allocate_surplus_use_case.dart';
@@ -26,6 +27,10 @@ import 'package:finora/features/predictions/domain/budget_variance_calculator.da
 import 'package:finora/features/predictions/domain/monthly_prediction.dart'
     as prediction_domain;
 import 'package:finora/features/predictions/domain/prediction_repository.dart';
+import 'package:finora/features/settings/data/settings_repository_sql.dart';
+import 'package:finora/features/settings/domain/app_settings.dart'
+    as settings_domain;
+import 'package:finora/features/settings/domain/settings_repository.dart';
 import 'package:finora/features/transactions/data/transaction_repository_drift.dart';
 import 'package:finora/features/transactions/domain/add_expense_transaction_use_case.dart';
 import 'package:finora/features/transactions/domain/delete_transaction_use_case.dart';
@@ -63,6 +68,16 @@ final goalCompletionServiceProvider = Provider<GoalCompletionService>((ref) {
   return GoalCompletionService();
 });
 
+final settingsRepositoryProvider = Provider<SettingsRepository>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return SettingsRepositorySql(db);
+});
+
+final jsonBackupServiceProvider = Provider<JsonBackupService>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return JsonBackupService(db);
+});
+
 final predictionRepositoryProvider = Provider<PredictionRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return PredictionRepositorySql(db);
@@ -70,6 +85,12 @@ final predictionRepositoryProvider = Provider<PredictionRepository>((ref) {
 
 final budgetVarianceCalculatorProvider = Provider<BudgetVarianceCalculator>((ref) {
   return const BudgetVarianceCalculator();
+});
+
+final appSettingsProvider = StreamProvider<settings_domain.AppSettings>((ref) {
+  ref.watch(dataRefreshTickProvider);
+  final repository = ref.watch(settingsRepositoryProvider);
+  return repository.watch();
 });
 
 final calculateSurplusUseCaseProvider = Provider<CalculateSurplusUseCase>((ref) {
@@ -113,6 +134,8 @@ final selectedMonthProvider = StateProvider<DateTime>((ref) {
   return DateTime(now.year, now.month);
 });
 
+final dataRefreshTickProvider = StateProvider<int>((ref) => 0);
+
 final transactionNotifierProvider =
     NotifierProvider<TransactionNotifier, AsyncValue<void>>(
   TransactionNotifier.new,
@@ -120,6 +143,15 @@ final transactionNotifierProvider =
 
 final goalNotifierProvider = NotifierProvider<GoalNotifier, AsyncValue<void>>(
   GoalNotifier.new,
+);
+
+final settingsNotifierProvider = NotifierProvider<SettingsNotifier, AsyncValue<void>>(
+  SettingsNotifier.new,
+);
+
+final dataTransferNotifierProvider =
+    NotifierProvider<DataTransferNotifier, AsyncValue<void>>(
+  DataTransferNotifier.new,
 );
 
 class TransactionNotifier extends Notifier<AsyncValue<void>> {
@@ -271,8 +303,60 @@ class GoalNotifier extends Notifier<AsyncValue<void>> {
   }
 }
 
+class SettingsNotifier extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  Future<void> updateCurrency({
+    required String currencyCode,
+    required String currencySymbol,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final repository = ref.read(settingsRepositoryProvider);
+      final existing = await repository.get();
+      await repository.update(
+        existing.copyWith(
+          currencyCode: currencyCode.trim().toUpperCase(),
+          currencySymbol: currencySymbol.trim(),
+          updatedAt: DateTime.now(),
+        ),
+      );
+      ref.read(dataRefreshTickProvider.notifier).state++;
+    });
+  }
+}
+
+class DataTransferNotifier extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  Future<String> exportJson() async {
+    state = const AsyncLoading();
+    try {
+      final service = ref.read(jsonBackupServiceProvider);
+      final json = await service.exportJson();
+      state = const AsyncData(null);
+      return json;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
+  Future<void> importJson(String rawJson) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final service = ref.read(jsonBackupServiceProvider);
+      await service.importJson(rawJson);
+      ref.read(dataRefreshTickProvider.notifier).state++;
+    });
+  }
+}
+
 final transactionsByMonthProvider =
     StreamProvider<List<tx_domain.Transaction>>((ref) {
+  ref.watch(dataRefreshTickProvider);
   final month = ref.watch(selectedMonthProvider);
   final repository = ref.watch(transactionRepositoryProvider);
   return repository.watchByMonth(month.year, month.month);
@@ -280,11 +364,13 @@ final transactionsByMonthProvider =
 
 final recentTransactionsProvider =
     StreamProvider<List<tx_domain.Transaction>>((ref) {
+  ref.watch(dataRefreshTickProvider);
   final repository = ref.watch(transactionRepositoryProvider);
   return repository.watchRecent(6);
 });
 
 final monthlyTotalsProvider = StreamProvider<MonthlyTotals>((ref) {
+  ref.watch(dataRefreshTickProvider);
   final month = ref.watch(selectedMonthProvider);
   final repository = ref.watch(transactionRepositoryProvider);
   return repository.watchByMonth(month.year, month.month).map((transactions) {
@@ -307,12 +393,14 @@ final monthlyTotalsProvider = StreamProvider<MonthlyTotals>((ref) {
 });
 
 final goalsProvider = StreamProvider<List<goal_domain.Goal>>((ref) {
+  ref.watch(dataRefreshTickProvider);
   final repository = ref.watch(goalRepositoryProvider);
   return repository.watchGoalsActive();
 });
 
 final monthlyPredictionsProvider =
     StreamProvider<List<prediction_domain.MonthlyPrediction>>((ref) {
+  ref.watch(dataRefreshTickProvider);
   final month = ref.watch(selectedMonthProvider);
   final repository = ref.watch(predictionRepositoryProvider);
   return repository.watchByMonth(month.year, month.month);
@@ -397,6 +485,7 @@ final budgetVarianceProvider = Provider<AsyncValue<BudgetVarianceResult>>((ref) 
 final goalContributionsProvider =
     StreamProvider.family<List<contribution_domain.GoalContribution>, String>(
   (ref, goalId) {
+    ref.watch(dataRefreshTickProvider);
     final repository = ref.watch(goalRepositoryProvider);
     return repository.watchContributionsByGoal(goalId);
   },
@@ -404,12 +493,14 @@ final goalContributionsProvider =
 
 final activeAccountsProvider =
     StreamProvider<List<account_domain.Account>>((ref) {
+  ref.watch(dataRefreshTickProvider);
   final repository = ref.watch(accountRepositoryProvider);
   return repository.watchAllActive();
 });
 
 final expenseCategoriesProvider =
     StreamProvider<List<category_domain.Category>>((ref) {
+  ref.watch(dataRefreshTickProvider);
   final repository = ref.watch(categoryRepositoryProvider);
   return repository.watchAllActive().map(
         (categories) => categories
@@ -424,8 +515,10 @@ final expenseCategoriesProvider =
 final transactionBootstrapProvider = FutureProvider<void>((ref) async {
   final accountRepository = ref.read(accountRepositoryProvider);
   final categoryRepository = ref.read(categoryRepositoryProvider);
+  final settingsRepository = ref.read(settingsRepositoryProvider);
 
   await categoryRepository.seedDefaultsIfEmpty();
+  await settingsRepository.ensureInitialized();
 
   final accounts = await accountRepository.watchAllActive().first;
   if (accounts.isNotEmpty) {

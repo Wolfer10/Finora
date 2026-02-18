@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:finora/core/errors/global_error_handler.dart';
 import 'package:finora/core/theme/app_theme.dart';
 import 'package:finora/core/theme/app_tokens.dart';
+import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_page_scaffold.dart';
 import 'package:finora/features/goals/presentation/goals_screen.dart';
 import 'package:finora/features/insights/presentation/insights_screen.dart';
@@ -47,6 +48,13 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
   @override
   Widget build(BuildContext context) {
     final bootstrap = ref.watch(transactionBootstrapProvider);
+    final appSettings = ref.watch(appSettingsProvider);
+    appSettings.whenData((settings) {
+      MoneyFormatter.configureDefaults(
+        currencyCode: settings.currencyCode,
+        currencySymbol: settings.currencySymbol,
+      );
+    });
     final selectedMonth = ref.watch(selectedMonthProvider);
     final pageTitle = switch (_selectedTab) {
       0 => 'Overview',
@@ -110,6 +118,18 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
               child: const Text('Add Goal'),
             ),
           OutlinedButton(
+            onPressed: () => _showSettingsDialog(context),
+            child: const Text('Settings'),
+          ),
+          OutlinedButton(
+            onPressed: () => _showExportDialog(context),
+            child: const Text('Export JSON'),
+          ),
+          OutlinedButton(
+            onPressed: () => _showImportDialog(context),
+            child: const Text('Import JSON'),
+          ),
+          OutlinedButton(
             onPressed: () async {
               try {
                 final result = await ref
@@ -168,5 +188,228 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
         ),
       ),
     );
+  }
+
+  Future<void> _showExportDialog(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final json = await ref.read(dataTransferNotifierProvider.notifier).exportJson();
+      if (!context.mounted) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('JSON Export'),
+          content: SizedBox(
+            width: 560,
+            child: SingleChildScrollView(
+              child: SelectableText(json),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Export failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _showSettingsDialog(BuildContext context) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => const _SettingsDialog(),
+    );
+  }
+
+  Future<void> _showImportDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final shouldImport = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Import JSON'),
+        content: SizedBox(
+          width: 560,
+          child: TextField(
+            controller: controller,
+            minLines: 14,
+            maxLines: 20,
+            decoration: const InputDecoration(
+              hintText: 'Paste export JSON here',
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Import'),
+          ),
+        ],
+      ),
+    );
+    if (shouldImport != true) {
+      controller.dispose();
+      return;
+    }
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(dataTransferNotifierProvider.notifier).importJson(controller.text);
+      if (!context.mounted) {
+        return;
+      }
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Import completed.')),
+      );
+    } catch (error) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Import failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      controller.dispose();
+    }
+  }
+}
+
+class _SettingsDialog extends ConsumerStatefulWidget {
+  const _SettingsDialog();
+
+  @override
+  ConsumerState<_SettingsDialog> createState() => _SettingsDialogState();
+}
+
+class _SettingsDialogState extends ConsumerState<_SettingsDialog> {
+  final _currencyCodeController = TextEditingController();
+  final _currencySymbolController = TextEditingController();
+  bool _initialized = false;
+
+  @override
+  void dispose() {
+    _currencyCodeController.dispose();
+    _currencySymbolController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settingsAsync = ref.watch(appSettingsProvider);
+    final saveState = ref.watch(settingsNotifierProvider);
+
+    if (!_initialized && settingsAsync.hasValue) {
+      final settings = settingsAsync.value!;
+      _currencyCodeController.text = settings.currencyCode;
+      _currencySymbolController.text = settings.currencySymbol;
+      _initialized = true;
+    }
+
+    return AlertDialog(
+      title: const Text('App Settings'),
+      content: SizedBox(
+        width: 420,
+        child: settingsAsync.when(
+          data: (_) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: _currencyCodeController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Currency code',
+                  hintText: 'USD, EUR, HUF...',
+                ),
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextField(
+                controller: _currencySymbolController,
+                decoration: const InputDecoration(
+                  labelText: 'Currency symbol',
+                  hintText: r'$, EUR symbol, Ft...',
+                ),
+              ),
+            ],
+          ),
+          loading: () => const Row(
+            children: [
+              SizedBox.square(
+                dimension: AppSizes.iconMd,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              SizedBox(width: AppSpacing.md),
+              Expanded(child: Text('Loading settings...')),
+            ],
+          ),
+          error: (error, _) => Text(
+            'Failed to load settings: $error',
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: AppColors.error),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: saveState is AsyncLoading ? null : _save,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _save() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final currencyCode = _currencyCodeController.text.trim().toUpperCase();
+    final currencySymbol = _currencySymbolController.text.trim();
+    if (currencyCode.isEmpty || currencySymbol.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Currency code and symbol are required.'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    await ref.read(settingsNotifierProvider.notifier).updateCurrency(
+          currencyCode: currencyCode,
+          currencySymbol: currencySymbol,
+        );
+    final saveState = ref.read(settingsNotifierProvider);
+    if (saveState.hasError) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Settings update failed: ${saveState.error}'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+    if (mounted) {
+      Navigator.of(context).pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Settings saved.')),
+      );
+    }
   }
 }
