@@ -7,9 +7,7 @@ import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_card.dart';
 import 'package:finora/features/accounts/domain/account.dart';
 import 'package:finora/features/categories/domain/category.dart';
-import 'package:finora/features/transactions/domain/add_expense_transaction_use_case.dart';
 import 'package:finora/features/transactions/domain/transaction.dart';
-import 'package:finora/features/transactions/domain/update_expense_transaction_use_case.dart';
 import 'package:finora/features/transactions/presentation/transactions_providers.dart';
 
 class TransactionsScreen extends ConsumerWidget {
@@ -26,7 +24,9 @@ class TransactionsScreen extends ConsumerWidget {
       data: (transactions) {
         if (transactions.isEmpty) {
           return const FinoraCard(
-            child: Text('No transactions in this month. Use Add Expense to create one.'),
+            child: Text(
+              'No transactions in this month. Use Add Transaction to create one.',
+            ),
           );
         }
 
@@ -114,7 +114,7 @@ class TransactionsScreen extends ConsumerWidget {
 
     await ref
         .read(transactionNotifierProvider.notifier)
-        .deleteTransaction(transaction.id);
+        .deleteTransactionByEntity(transaction);
     final saveState = ref.read(transactionNotifierProvider);
     if (saveState.hasError && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -124,18 +124,21 @@ class TransactionsScreen extends ConsumerWidget {
   }
 }
 
-class AddExpenseDialog extends ConsumerStatefulWidget {
-  const AddExpenseDialog({super.key});
+class AddTransactionDialog extends ConsumerStatefulWidget {
+  const AddTransactionDialog({super.key});
 
   @override
-  ConsumerState<AddExpenseDialog> createState() => _AddExpenseDialogState();
+  ConsumerState<AddTransactionDialog> createState() =>
+      _AddTransactionDialogState();
 }
 
-class _AddExpenseDialogState extends ConsumerState<AddExpenseDialog> {
+class _AddTransactionDialogState extends ConsumerState<AddTransactionDialog> {
   final _formKey = GlobalKey<FormState>();
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
+  TransactionType _type = TransactionType.expense;
   String? _accountId;
+  String? _toAccountId;
   String? _categoryId;
 
   @override
@@ -148,15 +151,15 @@ class _AddExpenseDialogState extends ConsumerState<AddExpenseDialog> {
   @override
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(activeAccountsProvider);
-    final categoriesAsync = ref.watch(expenseCategoriesProvider);
+    final categoriesAsync = ref.watch(activeCategoriesProvider);
 
     return AlertDialog(
-      title: const Text('Add Expense'),
+      title: const Text('Add Transaction'),
       content: SizedBox(
         width: 420,
         child: accountsAsync.when(
           data: (accounts) => categoriesAsync.when(
-            data: (categories) => _buildForm(accounts, categories),
+            data: (categories) => _buildForm(context, accounts, categories),
             loading: () => const _DialogLoading(),
             error: (error, _) => _DialogError(message: 'Categories error: $error'),
           ),
@@ -177,25 +180,61 @@ class _AddExpenseDialogState extends ConsumerState<AddExpenseDialog> {
     );
   }
 
-  Widget _buildForm(List<Account> accounts, List<Category> categories) {
-    if (accounts.isEmpty || categories.isEmpty) {
+  Widget _buildForm(
+    BuildContext context,
+    List<Account> accounts,
+    List<Category> categories,
+  ) {
+    if (accounts.isEmpty) {
       return const Text(
-        'At least one account and expense category is required before adding an expense.',
+        'At least one account is required before adding a transaction.',
+      );
+    }
+    final filteredCategories = categories
+        .where((category) => category.type.name == _type.name)
+        .toList(growable: false);
+    if (_type == TransactionType.transfer && accounts.length < 2) {
+      return const Text(
+        'At least two accounts are required for a transfer transaction.',
+      );
+    }
+    if (_type != TransactionType.transfer && filteredCategories.isEmpty) {
+      return const Text(
+        'Create a matching category first for this transaction type.',
       );
     }
 
     _accountId ??= accounts.first.id;
-    _categoryId ??= categories.first.id;
+    if (_type == TransactionType.transfer) {
+      _toAccountId ??= accounts.length > 1 ? accounts[1].id : null;
+      _categoryId = null;
+    } else {
+      _categoryId ??= filteredCategories.first.id;
+      _toAccountId = null;
+    }
 
-    return _ExpenseTransactionForm(
+    return _TransactionForm(
       formKey: _formKey,
+      type: _type,
       accounts: accounts,
-      categories: categories,
+      categories: filteredCategories,
       amountController: _amountController,
       noteController: _noteController,
       accountId: _accountId,
+      toAccountId: _toAccountId,
       categoryId: _categoryId,
+      onTypeChanged: (value) {
+        if (value == null) {
+          return;
+        }
+        setState(() {
+          _type = value;
+          _categoryId = null;
+          _toAccountId = null;
+        });
+      },
       onAccountChanged: (value) => setState(() => _accountId = value),
+      onToAccountChanged: (value) => setState(() => _toAccountId = value),
       onCategoryChanged: (value) => setState(() => _categoryId = value),
     );
   }
@@ -207,23 +246,31 @@ class _AddExpenseDialogState extends ConsumerState<AddExpenseDialog> {
     }
 
     final accountId = _accountId;
+    final toAccountId = _toAccountId;
     final categoryId = _categoryId;
     final amount = double.tryParse(_amountController.text.trim());
-    if (accountId == null || categoryId == null || amount == null || amount <= 0) {
+    if (accountId == null || amount == null || amount <= 0) {
+      return;
+    }
+    if (_type == TransactionType.transfer) {
+      if (toAccountId == null || toAccountId == accountId) {
+        return;
+      }
+    } else if (categoryId == null) {
       return;
     }
 
     final selectedMonth = ref.read(selectedMonthProvider);
     final monthDate = DateTime(selectedMonth.year, selectedMonth.month, 1);
-    final input = AddExpenseTransactionInput(
-      accountId: accountId,
-      categoryId: categoryId,
-      amount: amount,
-      date: monthDate,
-      note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-    );
-
-    await ref.read(transactionNotifierProvider.notifier).addExpense(input);
+    await ref.read(transactionNotifierProvider.notifier).addTransaction(
+          type: _type,
+          accountId: accountId,
+          toAccountId: toAccountId,
+          categoryId: categoryId,
+          amount: amount,
+          date: monthDate,
+          note: _noteController.text,
+        );
     final saveState = ref.read(transactionNotifierProvider);
     if (saveState.hasError) {
       if (!mounted) {
@@ -242,8 +289,12 @@ class _AddExpenseDialogState extends ConsumerState<AddExpenseDialog> {
   }
 }
 
-class EditExpenseDialog extends ConsumerStatefulWidget {
-  const EditExpenseDialog({
+class AddExpenseDialog extends AddTransactionDialog {
+  const AddExpenseDialog({super.key});
+}
+
+class EditTransactionDialog extends ConsumerStatefulWidget {
+  const EditTransactionDialog({
     required this.transaction,
     super.key,
   });
@@ -251,15 +302,19 @@ class EditExpenseDialog extends ConsumerStatefulWidget {
   final Transaction transaction;
 
   @override
-  ConsumerState<EditExpenseDialog> createState() => _EditExpenseDialogState();
+  ConsumerState<EditTransactionDialog> createState() =>
+      _EditTransactionDialogState();
 }
 
-class _EditExpenseDialogState extends ConsumerState<EditExpenseDialog> {
+class _EditTransactionDialogState extends ConsumerState<EditTransactionDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _amountController;
   late final TextEditingController _noteController;
+  late TransactionType _type;
   String? _accountId;
+  String? _toAccountId;
   String? _categoryId;
+  bool _loadingTransferAccounts = false;
 
   @override
   void initState() {
@@ -270,8 +325,14 @@ class _EditExpenseDialogState extends ConsumerState<EditExpenseDialog> {
     _noteController = TextEditingController(
       text: widget.transaction.note ?? '',
     );
+    _type = widget.transaction.type;
     _accountId = widget.transaction.accountId;
     _categoryId = widget.transaction.categoryId;
+    if (_type == TransactionType.transfer &&
+        (widget.transaction.transferGroupId?.isNotEmpty ?? false)) {
+      _loadingTransferAccounts = true;
+      _loadTransferCounterpart();
+    }
   }
 
   @override
@@ -284,15 +345,15 @@ class _EditExpenseDialogState extends ConsumerState<EditExpenseDialog> {
   @override
   Widget build(BuildContext context) {
     final accountsAsync = ref.watch(activeAccountsProvider);
-    final categoriesAsync = ref.watch(expenseCategoriesProvider);
+    final categoriesAsync = ref.watch(activeCategoriesProvider);
 
     return AlertDialog(
-      title: const Text('Update Expense'),
+      title: const Text('Update Transaction'),
       content: SizedBox(
         width: 420,
         child: accountsAsync.when(
           data: (accounts) => categoriesAsync.when(
-            data: (categories) => _buildForm(accounts, categories),
+            data: (categories) => _buildForm(context, accounts, categories),
             loading: () => const _DialogLoading(),
             error: (error, _) => _DialogError(message: 'Categories error: $error'),
           ),
@@ -313,25 +374,67 @@ class _EditExpenseDialogState extends ConsumerState<EditExpenseDialog> {
     );
   }
 
-  Widget _buildForm(List<Account> accounts, List<Category> categories) {
-    if (accounts.isEmpty || categories.isEmpty) {
+  Widget _buildForm(
+    BuildContext context,
+    List<Account> accounts,
+    List<Category> categories,
+  ) {
+    if (accounts.isEmpty) {
       return const Text(
-        'At least one account and expense category is required before updating an expense.',
+        'At least one account is required before updating a transaction.',
+      );
+    }
+    if (_loadingTransferAccounts) {
+      return const _DialogLoading();
+    }
+    final filteredCategories = categories
+        .where((category) => category.type.name == _type.name)
+        .toList(growable: false);
+    if (_type == TransactionType.transfer && accounts.length < 2) {
+      return const Text(
+        'At least two accounts are required for a transfer transaction.',
+      );
+    }
+    if (_type != TransactionType.transfer && filteredCategories.isEmpty) {
+      return const Text(
+        'Create a matching category first for this transaction type.',
       );
     }
 
     _accountId ??= accounts.first.id;
-    _categoryId ??= categories.first.id;
+    if (_type == TransactionType.transfer) {
+      _toAccountId ??= accounts.length > 1 ? accounts[1].id : null;
+      _categoryId = null;
+    } else {
+      _toAccountId = null;
+      if (_categoryId == null ||
+          !filteredCategories.any((category) => category.id == _categoryId)) {
+        _categoryId = filteredCategories.first.id;
+      }
+    }
 
-    return _ExpenseTransactionForm(
+    return _TransactionForm(
       formKey: _formKey,
+      type: _type,
       accounts: accounts,
-      categories: categories,
+      categories: filteredCategories,
       amountController: _amountController,
       noteController: _noteController,
       accountId: _accountId,
+      toAccountId: _toAccountId,
       categoryId: _categoryId,
+      onTypeChanged: (value) {
+        if (value == null) {
+          return;
+        }
+        setState(() {
+          _type = value;
+          _categoryId = null;
+          _toAccountId = null;
+        });
+      },
       onAccountChanged: (value) => setState(() => _accountId = value),
+      onToAccountChanged: (value) => setState(() => _toAccountId = value),
       onCategoryChanged: (value) => setState(() => _categoryId = value),
     );
   }
@@ -343,24 +446,32 @@ class _EditExpenseDialogState extends ConsumerState<EditExpenseDialog> {
     }
 
     final accountId = _accountId;
+    final toAccountId = _toAccountId;
     final categoryId = _categoryId;
     final amount = double.tryParse(_amountController.text.trim());
-    if (accountId == null || categoryId == null || amount == null || amount <= 0) {
+    if (accountId == null || amount == null || amount <= 0) {
+      return;
+    }
+    if (_type == TransactionType.transfer) {
+      if (toAccountId == null || toAccountId == accountId) {
+        return;
+      }
+    } else if (categoryId == null) {
       return;
     }
 
-    final input = UpdateExpenseTransactionInput(
-      transactionId: widget.transaction.id,
-      accountId: accountId,
-      categoryId: categoryId,
-      amount: amount,
-      date: widget.transaction.date,
-      note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
-    );
-
     await ref
         .read(transactionNotifierProvider.notifier)
-        .updateExpense(widget.transaction, input);
+        .updateTransaction(
+          original: widget.transaction,
+          type: _type,
+          accountId: accountId,
+          toAccountId: toAccountId,
+          categoryId: categoryId,
+          amount: amount,
+          date: widget.transaction.date,
+          note: _noteController.text,
+        );
     final saveState = ref.read(transactionNotifierProvider);
     if (saveState.hasError) {
       if (!mounted) {
@@ -377,29 +488,73 @@ class _EditExpenseDialogState extends ConsumerState<EditExpenseDialog> {
     }
     Navigator.of(context).pop();
   }
+
+  Future<void> _loadTransferCounterpart() async {
+    final transferGroupId = widget.transaction.transferGroupId;
+    if (transferGroupId == null || transferGroupId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _loadingTransferAccounts = false;
+        });
+      }
+      return;
+    }
+    final linked = await ref
+        .read(transactionRepositoryProvider)
+        .listByTransferGroup(transferGroupId);
+    Transaction? counterpart;
+    for (final tx in linked) {
+      if (tx.id != widget.transaction.id) {
+        counterpart = tx;
+        break;
+      }
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _toAccountId = counterpart?.accountId;
+      _loadingTransferAccounts = false;
+    });
+  }
 }
 
-class _ExpenseTransactionForm extends StatelessWidget {
-  const _ExpenseTransactionForm({
+class EditExpenseDialog extends EditTransactionDialog {
+  const EditExpenseDialog({
+    required super.transaction,
+    super.key,
+  });
+}
+
+class _TransactionForm extends StatelessWidget {
+  const _TransactionForm({
     required this.formKey,
+    required this.type,
     required this.accounts,
     required this.categories,
     required this.amountController,
     required this.noteController,
     required this.accountId,
+    required this.toAccountId,
     required this.categoryId,
+    required this.onTypeChanged,
     required this.onAccountChanged,
+    required this.onToAccountChanged,
     required this.onCategoryChanged,
   });
 
   final GlobalKey<FormState> formKey;
+  final TransactionType type;
   final List<Account> accounts;
   final List<Category> categories;
   final TextEditingController amountController;
   final TextEditingController noteController;
   final String? accountId;
+  final String? toAccountId;
   final String? categoryId;
+  final ValueChanged<TransactionType?> onTypeChanged;
   final ValueChanged<String?> onAccountChanged;
+  final ValueChanged<String?> onToAccountChanged;
   final ValueChanged<String?> onCategoryChanged;
 
   @override
@@ -409,25 +564,81 @@ class _ExpenseTransactionForm extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          DropdownButtonFormField<TransactionType>(
+            initialValue: type,
+            decoration: const InputDecoration(labelText: 'Type'),
+            items: const [
+              DropdownMenuItem(
+                value: TransactionType.expense,
+                child: Text('Expense'),
+              ),
+              DropdownMenuItem(
+                value: TransactionType.income,
+                child: Text('Income'),
+              ),
+              DropdownMenuItem(
+                value: TransactionType.transfer,
+                child: Text('Transfer'),
+              ),
+            ],
+            onChanged: onTypeChanged,
+          ),
+          const SizedBox(height: AppSpacing.md),
           DropdownButtonFormField<String>(
             initialValue: accountId,
-            decoration: const InputDecoration(labelText: 'Account'),
+            decoration: InputDecoration(
+              labelText: type == TransactionType.transfer
+                  ? 'From account'
+                  : 'Account',
+            ),
             items: [
               for (final account in accounts)
                 DropdownMenuItem(value: account.id, child: Text(account.name)),
             ],
             onChanged: onAccountChanged,
           ),
-          const SizedBox(height: AppSpacing.md),
-          DropdownButtonFormField<String>(
-            initialValue: categoryId,
-            decoration: const InputDecoration(labelText: 'Category'),
-            items: [
-              for (final category in categories)
-                DropdownMenuItem(value: category.id, child: Text(category.name)),
-            ],
-            onChanged: onCategoryChanged,
-          ),
+          if (type == TransactionType.transfer) ...[
+            const SizedBox(height: AppSpacing.md),
+            DropdownButtonFormField<String>(
+              initialValue: toAccountId,
+              decoration: const InputDecoration(labelText: 'To account'),
+              items: [
+                for (final account in accounts)
+                  if (account.id != accountId)
+                    DropdownMenuItem(
+                      value: account.id,
+                      child: Text(account.name),
+                    ),
+              ],
+              onChanged: onToAccountChanged,
+              validator: (value) {
+                if ((value ?? '').isEmpty) {
+                  return 'Select destination account';
+                }
+                if (value == accountId) {
+                  return 'Destination must be different';
+                }
+                return null;
+              },
+            ),
+          ] else ...[
+            const SizedBox(height: AppSpacing.md),
+            DropdownButtonFormField<String>(
+              initialValue: categoryId,
+              decoration: const InputDecoration(labelText: 'Category'),
+              items: [
+                for (final category in categories)
+                  DropdownMenuItem(value: category.id, child: Text(category.name)),
+              ],
+              onChanged: onCategoryChanged,
+              validator: (value) {
+                if ((value ?? '').isEmpty) {
+                  return 'Category is required';
+                }
+                return null;
+              },
+            ),
+          ],
           const SizedBox(height: AppSpacing.md),
           TextFormField(
             controller: amountController,
@@ -528,8 +739,7 @@ class _TransactionRow extends StatelessWidget {
           const SizedBox(width: AppSpacing.sm),
           IconButton(
             tooltip: 'Edit transaction',
-            onPressed:
-                transaction.type == TransactionType.expense ? onEdit : null,
+            onPressed: onEdit,
             icon: const Icon(Icons.edit_outlined),
             iconSize: AppSizes.iconSm,
           ),
@@ -539,8 +749,8 @@ class _TransactionRow extends StatelessWidget {
             icon: const Icon(Icons.delete_outline),
             iconSize: AppSizes.iconSm,
           ),
-      ]
-        ),
+        ],
+      ),
     );
   }
 

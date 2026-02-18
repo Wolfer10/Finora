@@ -191,6 +191,267 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
     });
   }
 
+  Future<void> addTransaction({
+    required tx_domain.TransactionType type,
+    required String accountId,
+    String? categoryId,
+    String? toAccountId,
+    required double amount,
+    required DateTime date,
+    String? note,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      if (amount <= 0) {
+        throw ArgumentError.value(amount, 'amount', 'must be greater than 0');
+      }
+      final repository = ref.read(transactionRepositoryProvider);
+      final now = DateTime.now();
+      final normalizedNote = note?.trim().isEmpty ?? true ? null : note!.trim();
+
+      if (type == tx_domain.TransactionType.transfer) {
+        if (toAccountId == null || toAccountId.isEmpty) {
+          throw ArgumentError.value(
+            toAccountId,
+            'toAccountId',
+            'required for transfer',
+          );
+        }
+        if (toAccountId == accountId) {
+          throw ArgumentError.value(
+            toAccountId,
+            'toAccountId',
+            'must be different from source account',
+          );
+        }
+        final transferCategoryId = await _ensureTransferCategoryId();
+        final transferGroupId = _generateId('txg');
+        final source = tx_domain.Transaction(
+          id: _generateId('tx'),
+          accountId: accountId,
+          categoryId: transferCategoryId,
+          type: type,
+          amount: amount,
+          date: date,
+          note: normalizedNote,
+          transferGroupId: transferGroupId,
+          recurringRuleId: null,
+          createdAt: now,
+          updatedAt: now,
+          isDeleted: false,
+        );
+        final destination = tx_domain.Transaction(
+          id: _generateId('tx'),
+          accountId: toAccountId,
+          categoryId: transferCategoryId,
+          type: type,
+          amount: amount,
+          date: date,
+          note: normalizedNote,
+          transferGroupId: transferGroupId,
+          recurringRuleId: null,
+          createdAt: now,
+          updatedAt: now,
+          isDeleted: false,
+        );
+        await repository.create(source);
+        await repository.create(destination);
+        return;
+      }
+
+      if (categoryId == null || categoryId.isEmpty) {
+        throw ArgumentError.value(
+          categoryId,
+          'categoryId',
+          'required for non-transfer transactions',
+        );
+      }
+      await _assertCategoryType(categoryId, type);
+      final transaction = tx_domain.Transaction(
+        id: _generateId('tx'),
+        accountId: accountId,
+        categoryId: categoryId,
+        type: type,
+        amount: amount,
+        date: date,
+        note: normalizedNote,
+        transferGroupId: null,
+        recurringRuleId: null,
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      );
+      await repository.create(transaction);
+    });
+  }
+
+  Future<void> updateTransaction({
+    required tx_domain.Transaction original,
+    required tx_domain.TransactionType type,
+    required String accountId,
+    String? categoryId,
+    String? toAccountId,
+    required double amount,
+    required DateTime date,
+    String? note,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      if (amount <= 0) {
+        throw ArgumentError.value(amount, 'amount', 'must be greater than 0');
+      }
+      final repository = ref.read(transactionRepositoryProvider);
+      final now = DateTime.now();
+      final normalizedNote = note?.trim().isEmpty ?? true ? null : note!.trim();
+
+      if (type == tx_domain.TransactionType.transfer) {
+        if (toAccountId == null || toAccountId.isEmpty) {
+          throw ArgumentError.value(
+            toAccountId,
+            'toAccountId',
+            'required for transfer',
+          );
+        }
+        if (toAccountId == accountId) {
+          throw ArgumentError.value(
+            toAccountId,
+            'toAccountId',
+            'must be different from source account',
+          );
+        }
+
+        final transferGroupId =
+            original.transferGroupId ?? _generateId('txg-update');
+        final transferCategoryId = await _ensureTransferCategoryId();
+        final linked = await repository.listByTransferGroup(transferGroupId);
+        tx_domain.Transaction? counterpart;
+        for (final tx in linked) {
+          if (tx.id != original.id) {
+            counterpart = tx;
+            break;
+          }
+        }
+
+        final updatedSource = original.copyWith(
+          accountId: accountId,
+          categoryId: transferCategoryId,
+          type: type,
+          amount: amount,
+          date: date,
+          note: normalizedNote,
+          transferGroupId: transferGroupId,
+          recurringRuleId: null,
+          updatedAt: now,
+        );
+        await repository.update(updatedSource);
+
+        if (counterpart != null) {
+          final updatedDestination = counterpart.copyWith(
+            accountId: toAccountId,
+            categoryId: transferCategoryId,
+            type: type,
+            amount: amount,
+            date: date,
+            note: normalizedNote,
+            transferGroupId: transferGroupId,
+            recurringRuleId: null,
+            updatedAt: now,
+          );
+          await repository.update(updatedDestination);
+        }
+        return;
+      }
+
+      if (categoryId == null || categoryId.isEmpty) {
+        throw ArgumentError.value(
+          categoryId,
+          'categoryId',
+          'required for non-transfer transactions',
+        );
+      }
+      await _assertCategoryType(categoryId, type);
+      final updated = original.copyWith(
+        accountId: accountId,
+        categoryId: categoryId,
+        type: type,
+        amount: amount,
+        date: date,
+        note: normalizedNote,
+        transferGroupId: null,
+        recurringRuleId: null,
+        updatedAt: now,
+      );
+      await repository.update(updated);
+    });
+  }
+
+  Future<void> deleteTransactionByEntity(tx_domain.Transaction transaction) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final repository = ref.read(transactionRepositoryProvider);
+      if (transaction.type == tx_domain.TransactionType.transfer &&
+          transaction.transferGroupId != null &&
+          transaction.transferGroupId!.isNotEmpty) {
+        await repository.softDeleteByTransferGroup(transaction.transferGroupId!);
+        return;
+      }
+      await repository.softDelete(transaction.id);
+    });
+  }
+
+  Future<void> _assertCategoryType(
+    String categoryId,
+    tx_domain.TransactionType type,
+  ) async {
+    final categories = await ref.read(categoryRepositoryProvider).watchAllActive().first;
+    category_domain.Category? category;
+    for (final item in categories) {
+      if (item.id == categoryId) {
+        category = item;
+        break;
+      }
+    }
+    if (category == null) {
+      throw ArgumentError.value(categoryId, 'categoryId', 'category not found');
+    }
+    final expectedType = switch (type) {
+      tx_domain.TransactionType.expense => category_domain.CategoryType.expense,
+      tx_domain.TransactionType.income => category_domain.CategoryType.income,
+      tx_domain.TransactionType.transfer => null,
+    };
+    if (expectedType != null && category.type != expectedType) {
+      throw ArgumentError.value(
+        categoryId,
+        'categoryId',
+        'category type does not match transaction type',
+      );
+    }
+  }
+
+  Future<String> _ensureTransferCategoryId() async {
+    const transferCategoryId = 'cat-transfer-system';
+    final repository = ref.read(categoryRepositoryProvider);
+    final existing = await repository.watchAllActive().first;
+    if (existing.any((category) => category.id == transferCategoryId)) {
+      return transferCategoryId;
+    }
+    final now = DateTime.now();
+    await repository.create(
+      category_domain.Category(
+        id: transferCategoryId,
+        name: 'Transfer',
+        type: category_domain.CategoryType.expense,
+        icon: 'swap_horiz',
+        color: '#6B7280',
+        isDefault: true,
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      ),
+    );
+    return transferCategoryId;
+  }
+
   Future<AllocateSurplusResult> closeMonth(DateTime month) async {
     state = const AsyncLoading();
     try {
@@ -215,6 +476,11 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
       state = AsyncError(error, stackTrace);
       rethrow;
     }
+  }
+
+  static String _generateId(String prefix) {
+    final microseconds = DateTime.now().microsecondsSinceEpoch;
+    return '$prefix-$microseconds';
   }
 }
 
@@ -644,6 +910,20 @@ final expenseCategoriesProvider =
             .where(
               (category) =>
                   category.type == category_domain.CategoryType.expense,
+            )
+            .toList(growable: false),
+      );
+});
+
+final incomeCategoriesProvider =
+    StreamProvider<List<category_domain.Category>>((ref) {
+  ref.watch(dataRefreshTickProvider);
+  final repository = ref.watch(categoryRepositoryProvider);
+  return repository.watchAllActive().map(
+        (categories) => categories
+            .where(
+              (category) =>
+                  category.type == category_domain.CategoryType.income,
             )
             .toList(growable: false),
       );

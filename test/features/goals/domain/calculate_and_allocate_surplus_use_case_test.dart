@@ -117,6 +117,14 @@ class _FakeTransactionRepository implements TransactionRepository {
   Future<void> softDelete(String id) async {}
 
   @override
+  Future<void> softDeleteByTransferGroup(String transferGroupId) async {}
+
+  @override
+  Future<List<Transaction>> listByTransferGroup(String transferGroupId) async {
+    return const [];
+  }
+
+  @override
   Future<void> update(Transaction transaction) async {}
 
   @override

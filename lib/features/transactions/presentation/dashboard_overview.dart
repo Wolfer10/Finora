@@ -100,7 +100,7 @@ class _RecentTransactionsView extends ConsumerWidget {
     };
     if (transactions.isEmpty) {
       return Text(
-        'No transactions yet. Add your first expense from the Transactions tab.',
+        'No transactions yet. Add your first transaction from the Transactions tab.',
         style: textTheme.bodyMedium,
       );
     }
@@ -164,7 +164,7 @@ class _RecentTransactionsView extends ConsumerWidget {
 
     await ref
         .read(transactionNotifierProvider.notifier)
-        .deleteTransaction(transaction.id);
+        .deleteTransactionByEntity(transaction);
     final saveState = ref.read(transactionNotifierProvider);
     if (saveState.hasError && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -245,14 +245,12 @@ class _RecentTransactionRow extends StatelessWidget {
                 ),
           ),
           const SizedBox(width: AppSpacing.sm),
-          IconButton(
-            tooltip: 'Edit transaction',
-            onPressed: transaction.type == tx_domain.TransactionType.expense
-                ? onEdit
-                : null,
-            icon: const Icon(Icons.edit_outlined),
-            iconSize: AppSizes.iconSm,
-          ),
+        IconButton(
+          tooltip: 'Edit transaction',
+          onPressed: onEdit,
+          icon: const Icon(Icons.edit_outlined),
+          iconSize: AppSizes.iconSm,
+        ),
           IconButton(
             tooltip: 'Delete transaction',
             onPressed: onDelete,

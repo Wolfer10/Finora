@@ -16,6 +16,8 @@ abstract class TransactionRepository {
   Future<void> create(Transaction transaction);
   Future<void> update(Transaction transaction);
   Future<void> softDelete(String id);
+  Future<void> softDeleteByTransferGroup(String transferGroupId);
+  Future<List<Transaction>> listByTransferGroup(String transferGroupId);
   Stream<List<Transaction>> watchRecent(int limit, {String? accountId});
   Stream<List<Transaction>> watchByMonth(
     int year,

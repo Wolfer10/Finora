@@ -88,6 +88,16 @@ class _FakeTransactionRepository implements TransactionRepository {
   }
 
   @override
+  Future<void> softDeleteByTransferGroup(String transferGroupId) async {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<List<Transaction>> listByTransferGroup(String transferGroupId) async {
+    throw UnimplementedError();
+  }
+
+  @override
   Future<void> update(Transaction transaction) async {
     throw UnimplementedError();
   }

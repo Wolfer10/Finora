@@ -34,6 +34,24 @@ class TransactionRepositoryDrift implements TransactionRepository {
   }
 
   @override
+  Future<void> softDeleteByTransferGroup(String transferGroupId) async {
+    await guardRepositoryCall(
+      'TransactionRepository.softDeleteByTransferGroup',
+      () {
+        return _dao.softDeleteByTransferGroupId(transferGroupId, DateTime.now());
+      },
+    );
+  }
+
+  @override
+  Future<List<domain.Transaction>> listByTransferGroup(String transferGroupId) {
+    return guardRepositoryCall('TransactionRepository.listByTransferGroup', () async {
+      final rows = await _dao.listByTransferGroupId(transferGroupId);
+      return rows.map(_toDomain).toList(growable: false);
+    });
+  }
+
+  @override
   Stream<List<domain.Transaction>> watchRecent(int limit, {String? accountId}) {
     return guardRepositoryStream('TransactionRepository.watchRecent', () {
       return _dao.watchRecent(limit, accountId: accountId).map(

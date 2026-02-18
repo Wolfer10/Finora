@@ -116,10 +116,10 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
               onPressed: () async {
                 await showDialog<void>(
                   context: context,
-                  builder: (context) => const AddExpenseDialog(),
+                  builder: (context) => const AddTransactionDialog(),
                 );
               },
-              child: const Text('Add Expense'),
+              child: const Text('Add Transaction'),
             ),
           if (_selectedTab == 2)
             FilledButton(

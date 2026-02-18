@@ -61,6 +61,31 @@ class TransactionDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
+  Future<void> softDeleteByTransferGroupId(
+    String transferGroupId,
+    DateTime updatedAt,
+  ) async {
+    await (update(transactions)
+          ..where((tbl) => tbl.transferGroupId.equals(transferGroupId)))
+        .write(
+      TransactionsCompanion(
+        isDeleted: const Value(true),
+        updatedAt: Value(updatedAt),
+      ),
+    );
+  }
+
+  Future<List<Transaction>> listByTransferGroupId(String transferGroupId) {
+    return (select(transactions)
+          ..where(
+            (tbl) =>
+                tbl.transferGroupId.equals(transferGroupId) &
+                tbl.isDeleted.equals(false),
+          )
+          ..orderBy([(tbl) => OrderingTerm.asc(tbl.createdAt)]))
+        .get();
+  }
+
   Stream<List<Transaction>> watchRecent(int limit, {String? accountId}) {
     return (select(transactions)
           ..where((tbl) {
