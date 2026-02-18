@@ -6,6 +6,7 @@ import 'package:finora/core/theme/app_theme.dart';
 import 'package:finora/core/theme/app_tokens.dart';
 import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_page_scaffold.dart';
+import 'package:finora/features/accounts/presentation/accounts_screen.dart';
 import 'package:finora/features/goals/presentation/goals_screen.dart';
 import 'package:finora/features/insights/presentation/insights_screen.dart';
 import 'package:finora/features/transactions/presentation/dashboard_overview.dart';
@@ -60,7 +61,8 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
       0 => 'Overview',
       1 => 'Transactions',
       2 => 'Goals',
-      _ => 'Insights',
+      3 => 'Insights',
+      _ => 'Accounts',
     };
 
     return FinoraPageScaffold(
@@ -97,6 +99,11 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
             selected: _selectedTab == 3,
             onSelected: (_) => setState(() => _selectedTab = 3),
           ),
+          ChoiceChip(
+            label: const Text('Accounts'),
+            selected: _selectedTab == 4,
+            onSelected: (_) => setState(() => _selectedTab = 4),
+          ),
           if (_selectedTab == 1)
             FilledButton(
               onPressed: () async {
@@ -117,49 +124,38 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
               },
               child: const Text('Add Goal'),
             ),
-          OutlinedButton(
-            onPressed: () => _showSettingsDialog(context),
-            child: const Text('Settings'),
-          ),
-          OutlinedButton(
-            onPressed: () => _showExportDialog(context),
-            child: const Text('Export JSON'),
-          ),
-          OutlinedButton(
-            onPressed: () => _showImportDialog(context),
-            child: const Text('Import JSON'),
-          ),
-          OutlinedButton(
-            onPressed: () async {
-              try {
-                final result = await ref
-                    .read(transactionNotifierProvider.notifier)
-                    .closeMonth(selectedMonth);
-                if (!context.mounted) {
-                  return;
-                }
-                final allocated = result.allocatedAmount.toStringAsFixed(2);
-                final createdCount = result.createdContributions.length;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Month closed. Allocated $allocated across $createdCount goal contributions.',
-                    ),
-                  ),
+          if (_selectedTab == 4)
+            FilledButton(
+              onPressed: () async {
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) => const AddAccountDialog(),
                 );
-              } catch (error) {
-                if (!context.mounted) {
-                  return;
-                }
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Close month failed: $error'),
-                    backgroundColor: AppColors.error,
-                  ),
-                );
-              }
-            },
-            child: const Text('Close Month'),
+              },
+              child: const Text('Add Account'),
+            ),
+          PopupMenuButton<_TopBarAction>(
+            tooltip: 'More actions',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (action) => _handleTopBarAction(action, selectedMonth),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _TopBarAction.settings,
+                child: Text('Settings'),
+              ),
+              PopupMenuItem(
+                value: _TopBarAction.exportJson,
+                child: Text('Export JSON'),
+              ),
+              PopupMenuItem(
+                value: _TopBarAction.importJson,
+                child: Text('Import JSON'),
+              ),
+              PopupMenuItem(
+                value: _TopBarAction.closeMonth,
+                child: Text('Close Month'),
+              ),
+            ],
           ),
         ],
       ),
@@ -174,7 +170,10 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
           if (_selectedTab == 2) {
             return const GoalsScreen();
           }
-          return const InsightsScreen();
+          if (_selectedTab == 3) {
+            return const InsightsScreen();
+          }
+          return const AccountsScreen();
         },
         loading: () => const Center(
           child: CircularProgressIndicator(),
@@ -219,6 +218,56 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
       messenger.showSnackBar(
         SnackBar(
           content: Text('Export failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _handleTopBarAction(
+    _TopBarAction action,
+    DateTime selectedMonth,
+  ) async {
+    switch (action) {
+      case _TopBarAction.settings:
+        await _showSettingsDialog(context);
+        break;
+      case _TopBarAction.exportJson:
+        await _showExportDialog(context);
+        break;
+      case _TopBarAction.importJson:
+        await _showImportDialog(context);
+        break;
+      case _TopBarAction.closeMonth:
+        await _closeMonth(selectedMonth);
+        break;
+    }
+  }
+
+  Future<void> _closeMonth(DateTime selectedMonth) async {
+    try {
+      final result = await ref
+          .read(transactionNotifierProvider.notifier)
+          .closeMonth(selectedMonth);
+      if (!context.mounted) {
+        return;
+      }
+      final allocated = result.allocatedAmount.toStringAsFixed(2);
+      final createdCount = result.createdContributions.length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Month closed. Allocated $allocated across $createdCount goal contributions.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Close month failed: $error'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -286,6 +335,13 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
       controller.dispose();
     }
   }
+}
+
+enum _TopBarAction {
+  settings,
+  exportJson,
+  importJson,
+  closeMonth,
 }
 
 class _SettingsDialog extends ConsumerStatefulWidget {

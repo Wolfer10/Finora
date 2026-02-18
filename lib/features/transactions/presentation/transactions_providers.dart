@@ -141,6 +141,10 @@ final transactionNotifierProvider =
   TransactionNotifier.new,
 );
 
+final accountNotifierProvider = NotifierProvider<AccountNotifier, AsyncValue<void>>(
+  AccountNotifier.new,
+);
+
 final goalNotifierProvider = NotifierProvider<GoalNotifier, AsyncValue<void>>(
   GoalNotifier.new,
 );
@@ -294,6 +298,64 @@ class GoalNotifier extends Notifier<AsyncValue<void>> {
         note: note?.trim().isEmpty ?? true ? null : note!.trim(),
       );
       await ref.read(addGoalContributionUseCaseProvider)(input);
+    });
+  }
+
+  static String _generateId(String prefix) {
+    final microseconds = DateTime.now().microsecondsSinceEpoch;
+    return '$prefix-$microseconds';
+  }
+}
+
+class AccountNotifier extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  Future<void> createAccount({
+    required String name,
+    required account_domain.AccountType type,
+    required double initialBalance,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final now = DateTime.now();
+      await ref.read(accountRepositoryProvider).create(
+            account_domain.Account(
+              id: _generateId('acc'),
+              name: name.trim(),
+              type: type,
+              initialBalance: initialBalance,
+              createdAt: now,
+              updatedAt: now,
+              isDeleted: false,
+            ),
+          );
+    });
+  }
+
+  Future<void> updateAccount({
+    required account_domain.Account account,
+    required String name,
+    required account_domain.AccountType type,
+    required double initialBalance,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(accountRepositoryProvider).update(
+            account.copyWith(
+              name: name.trim(),
+              type: type,
+              initialBalance: initialBalance,
+              updatedAt: DateTime.now(),
+            ),
+          );
+    });
+  }
+
+  Future<void> deleteAccount(String accountId) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(accountRepositoryProvider).softDelete(accountId);
     });
   }
 
