@@ -31,9 +31,12 @@ import 'package:finora/features/settings/data/settings_repository_sql.dart';
 import 'package:finora/features/settings/domain/app_settings.dart'
     as settings_domain;
 import 'package:finora/features/settings/domain/settings_repository.dart';
+import 'package:finora/features/transactions/data/recurring_rule_repository_sql.dart';
 import 'package:finora/features/transactions/data/transaction_repository_drift.dart';
 import 'package:finora/features/transactions/domain/add_expense_transaction_use_case.dart';
 import 'package:finora/features/transactions/domain/delete_transaction_use_case.dart';
+import 'package:finora/features/transactions/domain/recurring_rule.dart';
+import 'package:finora/features/transactions/domain/recurring_rule_repository.dart';
 import 'package:finora/features/transactions/domain/transaction.dart' as tx_domain;
 import 'package:finora/features/transactions/domain/transaction_repository.dart';
 import 'package:finora/features/transactions/domain/update_expense_transaction_use_case.dart';
@@ -57,6 +60,11 @@ final categoryRepositoryProvider = Provider<CategoryRepository>((ref) {
 final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return TransactionRepositoryDrift(TransactionDao(db));
+});
+
+final recurringRuleRepositoryProvider = Provider<RecurringRuleRepository>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return RecurringRuleRepositorySql(db);
 });
 
 final goalRepositoryProvider = Provider<GoalRepository>((ref) {
@@ -199,15 +207,27 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
     required double amount,
     required DateTime date,
     String? note,
+    bool createRecurringRule = false,
+    RecurrenceUnit recurrenceUnit = RecurrenceUnit.monthly,
+    int recurrenceInterval = 1,
   }) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       if (amount <= 0) {
         throw ArgumentError.value(amount, 'amount', 'must be greater than 0');
       }
+      if (recurrenceInterval <= 0) {
+        throw ArgumentError.value(
+          recurrenceInterval,
+          'recurrenceInterval',
+          'must be greater than 0',
+        );
+      }
       final repository = ref.read(transactionRepositoryProvider);
+      final recurringRepository = ref.read(recurringRuleRepositoryProvider);
       final now = DateTime.now();
       final normalizedNote = note?.trim().isEmpty ?? true ? null : note!.trim();
+      String? recurringRuleId;
 
       if (type == tx_domain.TransactionType.transfer) {
         if (toAccountId == null || toAccountId.isEmpty) {
@@ -224,6 +244,28 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
             'must be different from source account',
           );
         }
+        if (createRecurringRule) {
+          recurringRuleId = _generateId('rule');
+          await recurringRepository.create(
+            RecurringRule(
+              id: recurringRuleId,
+              type: type,
+              accountId: accountId,
+              categoryId: null,
+              toAccountId: toAccountId,
+              amount: amount,
+              note: normalizedNote,
+              startDate: date,
+              endDate: null,
+              nextRunAt: _advanceRecurrence(date, recurrenceUnit, recurrenceInterval),
+              recurrenceUnit: recurrenceUnit,
+              recurrenceInterval: recurrenceInterval,
+              createdAt: now,
+              updatedAt: now,
+              isDeleted: false,
+            ),
+          );
+        }
         final transferCategoryId = await _ensureTransferCategoryId();
         final transferGroupId = _generateId('txg');
         final source = tx_domain.Transaction(
@@ -235,7 +277,7 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
           date: date,
           note: normalizedNote,
           transferGroupId: transferGroupId,
-          recurringRuleId: null,
+          recurringRuleId: recurringRuleId,
           createdAt: now,
           updatedAt: now,
           isDeleted: false,
@@ -249,7 +291,7 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
           date: date,
           note: normalizedNote,
           transferGroupId: transferGroupId,
-          recurringRuleId: null,
+          recurringRuleId: recurringRuleId,
           createdAt: now,
           updatedAt: now,
           isDeleted: false,
@@ -267,6 +309,28 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
         );
       }
       await _assertCategoryType(categoryId, type);
+      if (createRecurringRule) {
+        recurringRuleId = _generateId('rule');
+        await recurringRepository.create(
+          RecurringRule(
+            id: recurringRuleId,
+            type: type,
+            accountId: accountId,
+            categoryId: categoryId,
+            toAccountId: null,
+            amount: amount,
+            note: normalizedNote,
+            startDate: date,
+            endDate: null,
+            nextRunAt: _advanceRecurrence(date, recurrenceUnit, recurrenceInterval),
+            recurrenceUnit: recurrenceUnit,
+            recurrenceInterval: recurrenceInterval,
+            createdAt: now,
+            updatedAt: now,
+            isDeleted: false,
+          ),
+        );
+      }
       final transaction = tx_domain.Transaction(
         id: _generateId('tx'),
         accountId: accountId,
@@ -276,7 +340,7 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
         date: date,
         note: normalizedNote,
         transferGroupId: null,
-        recurringRuleId: null,
+        recurringRuleId: recurringRuleId,
         createdAt: now,
         updatedAt: now,
         isDeleted: false,
@@ -399,6 +463,109 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
     });
   }
 
+  Future<int> runRecurringGeneration({DateTime? until}) async {
+    state = const AsyncLoading();
+    try {
+      final repository = ref.read(transactionRepositoryProvider);
+      final recurringRepository = ref.read(recurringRuleRepositoryProvider);
+      final now = DateTime.now();
+      final untilDate = until ?? now;
+      final dueRules = await recurringRepository.listDue(untilDate);
+      var created = 0;
+
+      for (final rule in dueRules) {
+        var runAt = rule.nextRunAt;
+        var updatedRule = rule;
+        while (!runAt.isAfter(untilDate)) {
+          if (rule.endDate != null && runAt.isAfter(rule.endDate!)) {
+            updatedRule = updatedRule.copyWith(
+              isDeleted: true,
+              updatedAt: now,
+            );
+            break;
+          }
+          if (rule.type == tx_domain.TransactionType.transfer) {
+            if ((rule.toAccountId ?? '').isEmpty) {
+              break;
+            }
+            final transferCategoryId = await _ensureTransferCategoryId();
+            final transferGroupId = _generateId('txg');
+            await repository.create(
+              tx_domain.Transaction(
+                id: _generateId('tx'),
+                accountId: rule.accountId,
+                categoryId: transferCategoryId,
+                type: rule.type,
+                amount: rule.amount,
+                date: runAt,
+                note: rule.note,
+                transferGroupId: transferGroupId,
+                recurringRuleId: rule.id,
+                createdAt: now,
+                updatedAt: now,
+                isDeleted: false,
+              ),
+            );
+            await repository.create(
+              tx_domain.Transaction(
+                id: _generateId('tx'),
+                accountId: rule.toAccountId!,
+                categoryId: transferCategoryId,
+                type: rule.type,
+                amount: rule.amount,
+                date: runAt,
+                note: rule.note,
+                transferGroupId: transferGroupId,
+                recurringRuleId: rule.id,
+                createdAt: now,
+                updatedAt: now,
+                isDeleted: false,
+              ),
+            );
+            created += 2;
+          } else {
+            final categoryId = rule.categoryId;
+            if (categoryId == null || categoryId.isEmpty) {
+              break;
+            }
+            await repository.create(
+              tx_domain.Transaction(
+                id: _generateId('tx'),
+                accountId: rule.accountId,
+                categoryId: categoryId,
+                type: rule.type,
+                amount: rule.amount,
+                date: runAt,
+                note: rule.note,
+                transferGroupId: null,
+                recurringRuleId: rule.id,
+                createdAt: now,
+                updatedAt: now,
+                isDeleted: false,
+              ),
+            );
+            created += 1;
+          }
+          runAt = _advanceRecurrence(
+            runAt,
+            rule.recurrenceUnit,
+            rule.recurrenceInterval,
+          );
+          updatedRule = updatedRule.copyWith(
+            nextRunAt: runAt,
+            updatedAt: now,
+          );
+        }
+        await recurringRepository.update(updatedRule);
+      }
+      state = const AsyncData(null);
+      return created;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      rethrow;
+    }
+  }
+
   Future<void> _assertCategoryType(
     String categoryId,
     tx_domain.TransactionType type,
@@ -481,6 +648,35 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
   static String _generateId(String prefix) {
     final microseconds = DateTime.now().microsecondsSinceEpoch;
     return '$prefix-$microseconds';
+  }
+
+  DateTime _advanceRecurrence(
+    DateTime date,
+    RecurrenceUnit unit,
+    int interval,
+  ) {
+    switch (unit) {
+      case RecurrenceUnit.daily:
+        return date.add(Duration(days: interval));
+      case RecurrenceUnit.weekly:
+        return date.add(Duration(days: 7 * interval));
+      case RecurrenceUnit.monthly:
+        final monthIndex = date.month - 1 + interval;
+        final year = date.year + (monthIndex ~/ 12);
+        final month = (monthIndex % 12) + 1;
+        final lastDay = DateTime(year, month + 1, 0).day;
+        final day = date.day > lastDay ? lastDay : date.day;
+        return DateTime(
+          year,
+          month,
+          day,
+          date.hour,
+          date.minute,
+          date.second,
+          date.millisecond,
+          date.microsecond,
+        );
+    }
   }
 }
 
@@ -927,6 +1123,12 @@ final incomeCategoriesProvider =
             )
             .toList(growable: false),
       );
+});
+
+final recurringRulesProvider = StreamProvider<List<RecurringRule>>((ref) {
+  ref.watch(dataRefreshTickProvider);
+  final repository = ref.watch(recurringRuleRepositoryProvider);
+  return repository.watchAllActive();
 });
 
 final transactionBootstrapProvider = FutureProvider<void>((ref) async {

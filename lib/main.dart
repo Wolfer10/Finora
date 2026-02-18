@@ -172,6 +172,10 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
                 value: _TopBarAction.closeMonth,
                 child: Text('Close Month'),
               ),
+              PopupMenuItem(
+                value: _TopBarAction.runRecurring,
+                child: Text('Run Recurring'),
+              ),
             ],
           ),
         ],
@@ -260,6 +264,9 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
         break;
       case _TopBarAction.closeMonth:
         await _closeMonth(selectedMonth);
+        break;
+      case _TopBarAction.runRecurring:
+        await _runRecurringNow();
         break;
     }
   }
@@ -355,6 +362,32 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
       controller.dispose();
     }
   }
+
+  Future<void> _runRecurringNow() async {
+    try {
+      final generated = await ref
+          .read(transactionNotifierProvider.notifier)
+          .runRecurringGeneration();
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Recurring run completed. Generated $generated transactions.'),
+        ),
+      );
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Recurring run failed: $error'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
 }
 
 enum _TopBarAction {
@@ -362,6 +395,7 @@ enum _TopBarAction {
   exportJson,
   importJson,
   closeMonth,
+  runRecurring,
 }
 
 class _SettingsDialog extends ConsumerStatefulWidget {

@@ -54,6 +54,32 @@ class AppDatabase extends _$AppDatabase {
           await customStatement(
             'CREATE INDEX IF NOT EXISTS idx_monthly_predictions_is_deleted ON monthly_predictions(is_deleted)',
           );
+          // S17.4: recurring rules storage for manual/scheduled generation.
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS recurring_rules (
+              id TEXT PRIMARY KEY,
+              type TEXT NOT NULL,
+              account_id TEXT NOT NULL REFERENCES accounts(id),
+              category_id TEXT REFERENCES categories(id),
+              to_account_id TEXT REFERENCES accounts(id),
+              amount REAL NOT NULL,
+              note TEXT,
+              start_date TEXT NOT NULL,
+              end_date TEXT,
+              next_run_at TEXT NOT NULL,
+              recurrence_unit TEXT NOT NULL,
+              recurrence_interval INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              is_deleted INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_recurring_rules_next_run_at ON recurring_rules(next_run_at)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_recurring_rules_is_deleted ON recurring_rules(is_deleted)',
+          );
           // S6.1: single-row app settings table.
           await customStatement('''
             CREATE TABLE IF NOT EXISTS app_settings (

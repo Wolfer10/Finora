@@ -7,6 +7,7 @@ import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_card.dart';
 import 'package:finora/features/accounts/domain/account.dart';
 import 'package:finora/features/categories/domain/category.dart';
+import 'package:finora/features/transactions/domain/recurring_rule.dart';
 import 'package:finora/features/transactions/domain/transaction.dart';
 import 'package:finora/features/transactions/presentation/transactions_providers.dart';
 
@@ -137,6 +138,9 @@ class _AddTransactionDialogState extends ConsumerState<AddTransactionDialog> {
   final _amountController = TextEditingController();
   final _noteController = TextEditingController();
   TransactionType _type = TransactionType.expense;
+  bool _createRecurringRule = false;
+  RecurrenceUnit _recurrenceUnit = RecurrenceUnit.monthly;
+  final _recurrenceIntervalController = TextEditingController(text: '1');
   String? _accountId;
   String? _toAccountId;
   String? _categoryId;
@@ -145,6 +149,7 @@ class _AddTransactionDialogState extends ConsumerState<AddTransactionDialog> {
   void dispose() {
     _amountController.dispose();
     _noteController.dispose();
+    _recurrenceIntervalController.dispose();
     super.dispose();
   }
 
@@ -223,6 +228,9 @@ class _AddTransactionDialogState extends ConsumerState<AddTransactionDialog> {
       accountId: _accountId,
       toAccountId: _toAccountId,
       categoryId: _categoryId,
+      createRecurringRule: _createRecurringRule,
+      recurrenceUnit: _recurrenceUnit,
+      recurrenceIntervalController: _recurrenceIntervalController,
       onTypeChanged: (value) {
         if (value == null) {
           return;
@@ -236,6 +244,19 @@ class _AddTransactionDialogState extends ConsumerState<AddTransactionDialog> {
       onAccountChanged: (value) => setState(() => _accountId = value),
       onToAccountChanged: (value) => setState(() => _toAccountId = value),
       onCategoryChanged: (value) => setState(() => _categoryId = value),
+      onCreateRecurringChanged: (value) {
+        setState(() {
+          _createRecurringRule = value;
+        });
+      },
+      onRecurrenceUnitChanged: (value) {
+        if (value == null) {
+          return;
+        }
+        setState(() {
+          _recurrenceUnit = value;
+        });
+      },
     );
   }
 
@@ -249,7 +270,12 @@ class _AddTransactionDialogState extends ConsumerState<AddTransactionDialog> {
     final toAccountId = _toAccountId;
     final categoryId = _categoryId;
     final amount = double.tryParse(_amountController.text.trim());
+    final recurrenceInterval =
+        int.tryParse(_recurrenceIntervalController.text.trim()) ?? 0;
     if (accountId == null || amount == null || amount <= 0) {
+      return;
+    }
+    if (_createRecurringRule && recurrenceInterval <= 0) {
       return;
     }
     if (_type == TransactionType.transfer) {
@@ -270,6 +296,9 @@ class _AddTransactionDialogState extends ConsumerState<AddTransactionDialog> {
           amount: amount,
           date: monthDate,
           note: _noteController.text,
+          createRecurringRule: _createRecurringRule,
+          recurrenceUnit: _recurrenceUnit,
+          recurrenceInterval: recurrenceInterval <= 0 ? 1 : recurrenceInterval,
         );
     final saveState = ref.read(transactionNotifierProvider);
     if (saveState.hasError) {
@@ -423,6 +452,7 @@ class _EditTransactionDialogState extends ConsumerState<EditTransactionDialog> {
       accountId: _accountId,
       toAccountId: _toAccountId,
       categoryId: _categoryId,
+      showRecurringControls: false,
       onTypeChanged: (value) {
         if (value == null) {
           return;
@@ -537,10 +567,16 @@ class _TransactionForm extends StatelessWidget {
     required this.accountId,
     required this.toAccountId,
     required this.categoryId,
+    this.createRecurringRule = false,
+    this.recurrenceUnit = RecurrenceUnit.monthly,
+    this.recurrenceIntervalController,
+    this.showRecurringControls = true,
     required this.onTypeChanged,
     required this.onAccountChanged,
     required this.onToAccountChanged,
     required this.onCategoryChanged,
+    this.onCreateRecurringChanged,
+    this.onRecurrenceUnitChanged,
   });
 
   final GlobalKey<FormState> formKey;
@@ -552,10 +588,16 @@ class _TransactionForm extends StatelessWidget {
   final String? accountId;
   final String? toAccountId;
   final String? categoryId;
+  final bool createRecurringRule;
+  final RecurrenceUnit recurrenceUnit;
+  final TextEditingController? recurrenceIntervalController;
+  final bool showRecurringControls;
   final ValueChanged<TransactionType?> onTypeChanged;
   final ValueChanged<String?> onAccountChanged;
   final ValueChanged<String?> onToAccountChanged;
   final ValueChanged<String?> onCategoryChanged;
+  final ValueChanged<bool>? onCreateRecurringChanged;
+  final ValueChanged<RecurrenceUnit?>? onRecurrenceUnitChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -657,6 +699,52 @@ class _TransactionForm extends StatelessWidget {
             controller: noteController,
             decoration: const InputDecoration(labelText: 'Note (optional)'),
           ),
+          if (showRecurringControls) ...[
+            const SizedBox(height: AppSpacing.md),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Create recurring rule'),
+              value: createRecurringRule,
+              onChanged: onCreateRecurringChanged,
+            ),
+            if (createRecurringRule) ...[
+              const SizedBox(height: AppSpacing.sm),
+              DropdownButtonFormField<RecurrenceUnit>(
+                initialValue: recurrenceUnit,
+                decoration: const InputDecoration(labelText: 'Recurrence'),
+                items: const [
+                  DropdownMenuItem(
+                    value: RecurrenceUnit.daily,
+                    child: Text('Daily'),
+                  ),
+                  DropdownMenuItem(
+                    value: RecurrenceUnit.weekly,
+                    child: Text('Weekly'),
+                  ),
+                  DropdownMenuItem(
+                    value: RecurrenceUnit.monthly,
+                    child: Text('Monthly'),
+                  ),
+                ],
+                onChanged: onRecurrenceUnitChanged,
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextFormField(
+                controller: recurrenceIntervalController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Repeat every (interval)',
+                ),
+                validator: (value) {
+                  final parsed = int.tryParse(value ?? '');
+                  if (parsed == null || parsed <= 0) {
+                    return 'Enter an interval > 0';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ],
         ],
       ),
     );
@@ -729,6 +817,17 @@ class _TransactionRow extends StatelessWidget {
               ],
             ),
           ),
+          if ((transaction.recurringRuleId ?? '').isNotEmpty) ...[
+            Tooltip(
+              message: 'Recurring transaction',
+              child: Icon(
+                Icons.repeat,
+                size: AppSizes.iconSm,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+          ],
           Text(
             MoneyFormatter.format(transaction.amount),
             style: textTheme.bodyLarge?.copyWith(

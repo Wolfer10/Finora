@@ -237,6 +237,17 @@ class _RecentTransactionRow extends StatelessWidget {
               ],
             ),
           ),
+          if ((transaction.recurringRuleId ?? '').isNotEmpty) ...[
+            Tooltip(
+              message: 'Recurring transaction',
+              child: Icon(
+                Icons.repeat,
+                size: AppSizes.iconSm,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.xs),
+          ],
           Text(
             MoneyFormatter.format(transaction.amount),
             style: textTheme.bodyLarge?.copyWith(
