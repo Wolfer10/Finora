@@ -1,11 +1,11 @@
-import 'package:drift/drift.dart' show QueryRow, Variable;
+import 'package:drift/drift.dart'
+    show QueryRow, TableUpdate, TableUpdateQuery, Variable;
 
 import 'package:finora/core/database/app_database.dart';
 import 'package:finora/core/database/enum_codecs.dart';
 import 'package:finora/core/errors/repository_error.dart';
 import 'package:finora/features/transactions/domain/recurring_rule.dart';
 import 'package:finora/features/transactions/domain/recurring_rule_repository.dart';
-import 'package:finora/features/transactions/domain/transaction.dart';
 
 class RecurringRuleRepositorySql implements RecurringRuleRepository {
   RecurringRuleRepositorySql(this._db);
@@ -52,6 +52,7 @@ class RecurringRuleRepositorySql implements RecurringRuleRepository {
           rule.updatedAt.toIso8601String(),
         ],
       );
+      _db.notifyUpdates({const TableUpdate('recurring_rules')});
     });
   }
 
@@ -87,6 +88,7 @@ class RecurringRuleRepositorySql implements RecurringRuleRepository {
         ''',
         <Object?>[DateTime.now().toIso8601String(), id],
       );
+      _db.notifyUpdates({const TableUpdate('recurring_rules')});
     });
   }
 
@@ -129,31 +131,39 @@ class RecurringRuleRepositorySql implements RecurringRuleRepository {
           rule.id,
         ],
       );
+      _db.notifyUpdates({const TableUpdate('recurring_rules')});
     });
   }
 
   @override
   Stream<List<RecurringRule>> watchAllActive() {
     return guardRepositoryStream('RecurringRuleRepository.watchAllActive', () {
-      return _db
-          .customSelect(
-            '''
-            SELECT
-              id, type, account_id, category_id, to_account_id,
-              amount, note, start_date, end_date, next_run_at,
-              recurrence_unit, recurrence_interval, created_at, updated_at, is_deleted
-            FROM recurring_rules
-            WHERE is_deleted = 0
-            ORDER BY next_run_at ASC, created_at ASC
-            ''',
-          )
-          .watch()
-          .map(
-            (rows) => rows
-                .map<RecurringRule>((row) => _mapRow(row))
-                .toList(growable: false),
-          );
+      return (() async* {
+        yield await _listAllActive();
+        await for (final _ in _db.tableUpdates(
+          const TableUpdateQuery.onTableName('recurring_rules'),
+        )) {
+          yield await _listAllActive();
+        }
+      })();
     });
+  }
+
+  Future<List<RecurringRule>> _listAllActive() async {
+    final rows = await _db.customSelect(
+      '''
+      SELECT
+        id, type, account_id, category_id, to_account_id,
+        amount, note, start_date, end_date, next_run_at,
+        recurrence_unit, recurrence_interval, created_at, updated_at, is_deleted
+      FROM recurring_rules
+      WHERE is_deleted = 0
+      ORDER BY next_run_at ASC, created_at ASC
+      ''',
+    ).get();
+    return rows
+        .map<RecurringRule>((row) => _mapRow(row))
+        .toList(growable: false);
   }
 
   RecurringRule _mapRow(QueryRow row) {

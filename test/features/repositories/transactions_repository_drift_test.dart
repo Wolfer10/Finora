@@ -180,6 +180,81 @@ void main() {
       throwsA(isA<RepositoryError>()),
     );
   });
+
+  test('listByTransferGroup and softDeleteByTransferGroup affect linked records', () async {
+    final now = DateTime(2026, 2, 18, 9, 0);
+    await accountRepository.create(
+      domain.Account(
+        id: 'acc-a',
+        name: 'A',
+        type: domain.AccountType.bank,
+        initialBalance: 0,
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      ),
+    );
+    await accountRepository.create(
+      domain.Account(
+        id: 'acc-b',
+        name: 'B',
+        type: domain.AccountType.bank,
+        initialBalance: 0,
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      ),
+    );
+    await categoryRepository.create(
+      domain.Category(
+        id: 'cat-transfer',
+        name: 'Transfer',
+        type: domain.CategoryType.expense,
+        icon: 'swap_horiz',
+        color: '#6B7280',
+        isDefault: false,
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      ),
+    );
+    await transactionRepository.create(
+      domain.Transaction(
+        id: 'tx-1',
+        accountId: 'acc-a',
+        categoryId: 'cat-transfer',
+        type: domain.TransactionType.transfer,
+        amount: 100,
+        date: DateTime(2026, 2, 18),
+        transferGroupId: 'grp-1',
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      ),
+    );
+    await transactionRepository.create(
+      domain.Transaction(
+        id: 'tx-2',
+        accountId: 'acc-b',
+        categoryId: 'cat-transfer',
+        type: domain.TransactionType.transfer,
+        amount: 100,
+        date: DateTime(2026, 2, 18),
+        transferGroupId: 'grp-1',
+        createdAt: now,
+        updatedAt: now,
+        isDeleted: false,
+      ),
+    );
+
+    final linkedBefore = await transactionRepository.listByTransferGroup('grp-1');
+    expect(linkedBefore, hasLength(2));
+
+    await transactionRepository.softDeleteByTransferGroup('grp-1');
+
+    final linkedAfter = await transactionRepository.listByTransferGroup('grp-1');
+    expect(linkedAfter, isEmpty);
+  });
 }
 
 class _ThrowingTransactionDaoForTotals extends TransactionDao {
