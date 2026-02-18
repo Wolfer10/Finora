@@ -26,4 +26,34 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   int get schemaVersion => 1;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        beforeOpen: (details) async {
+          // S5.1: table maintained via SQL to avoid requiring a codegen step.
+          await customStatement('''
+            CREATE TABLE IF NOT EXISTS monthly_predictions (
+              id TEXT PRIMARY KEY,
+              year INTEGER NOT NULL,
+              month INTEGER NOT NULL,
+              category_id TEXT NOT NULL REFERENCES categories(id),
+              predicted_amount REAL NOT NULL,
+              note TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              is_deleted INTEGER NOT NULL DEFAULT 0,
+              UNIQUE(year, month, category_id)
+            )
+          ''');
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_monthly_predictions_year_month ON monthly_predictions(year, month)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_monthly_predictions_category_id ON monthly_predictions(category_id)',
+          );
+          await customStatement(
+            'CREATE INDEX IF NOT EXISTS idx_monthly_predictions_is_deleted ON monthly_predictions(is_deleted)',
+          );
+        },
+      );
 }

@@ -21,6 +21,11 @@ import 'package:finora/features/goals/domain/goal_completion_service.dart';
 import 'package:finora/features/goals/domain/goal_contribution.dart'
     as contribution_domain;
 import 'package:finora/features/goals/domain/goal_repository.dart';
+import 'package:finora/features/predictions/data/prediction_repository_sql.dart';
+import 'package:finora/features/predictions/domain/budget_variance_calculator.dart';
+import 'package:finora/features/predictions/domain/monthly_prediction.dart'
+    as prediction_domain;
+import 'package:finora/features/predictions/domain/prediction_repository.dart';
 import 'package:finora/features/transactions/data/transaction_repository_drift.dart';
 import 'package:finora/features/transactions/domain/add_expense_transaction_use_case.dart';
 import 'package:finora/features/transactions/domain/delete_transaction_use_case.dart';
@@ -56,6 +61,15 @@ final goalRepositoryProvider = Provider<GoalRepository>((ref) {
 
 final goalCompletionServiceProvider = Provider<GoalCompletionService>((ref) {
   return GoalCompletionService();
+});
+
+final predictionRepositoryProvider = Provider<PredictionRepository>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  return PredictionRepositorySql(db);
+});
+
+final budgetVarianceCalculatorProvider = Provider<BudgetVarianceCalculator>((ref) {
+  return const BudgetVarianceCalculator();
 });
 
 final calculateSurplusUseCaseProvider = Provider<CalculateSurplusUseCase>((ref) {
@@ -295,6 +309,89 @@ final monthlyTotalsProvider = StreamProvider<MonthlyTotals>((ref) {
 final goalsProvider = StreamProvider<List<goal_domain.Goal>>((ref) {
   final repository = ref.watch(goalRepositoryProvider);
   return repository.watchGoalsActive();
+});
+
+final monthlyPredictionsProvider =
+    StreamProvider<List<prediction_domain.MonthlyPrediction>>((ref) {
+  final month = ref.watch(selectedMonthProvider);
+  final repository = ref.watch(predictionRepositoryProvider);
+  return repository.watchByMonth(month.year, month.month);
+});
+
+final categoryExpenseTotalsProvider =
+    Provider<AsyncValue<Map<String, double>>>((ref) {
+  final categoriesAsync = ref.watch(expenseCategoriesProvider);
+  final transactionsAsync = ref.watch(transactionsByMonthProvider);
+
+  if (categoriesAsync.isLoading || transactionsAsync.isLoading) {
+    return const AsyncLoading();
+  }
+  if (categoriesAsync.hasError) {
+    return AsyncError(
+      categoriesAsync.error!,
+      categoriesAsync.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (transactionsAsync.hasError) {
+    return AsyncError(
+      transactionsAsync.error!,
+      transactionsAsync.stackTrace ?? StackTrace.current,
+    );
+  }
+
+  final categoryIds = categoriesAsync.value!
+      .where((item) => item.type == category_domain.CategoryType.expense)
+      .map((item) => item.id)
+      .toSet();
+  final totals = <String, double>{};
+  for (final tx in transactionsAsync.value!) {
+    if (tx.type != tx_domain.TransactionType.expense || tx.isDeleted) {
+      continue;
+    }
+    if (!categoryIds.contains(tx.categoryId)) {
+      continue;
+    }
+    totals[tx.categoryId] = (totals[tx.categoryId] ?? 0) + tx.amount;
+  }
+  return AsyncData(totals);
+});
+
+final budgetVarianceProvider = Provider<AsyncValue<BudgetVarianceResult>>((ref) {
+  final categoriesAsync = ref.watch(expenseCategoriesProvider);
+  final predictionsAsync = ref.watch(monthlyPredictionsProvider);
+  final transactionsAsync = ref.watch(transactionsByMonthProvider);
+
+  if (categoriesAsync.isLoading ||
+      predictionsAsync.isLoading ||
+      transactionsAsync.isLoading) {
+    return const AsyncLoading();
+  }
+  if (categoriesAsync.hasError) {
+    return AsyncError(
+      categoriesAsync.error!,
+      categoriesAsync.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (predictionsAsync.hasError) {
+    return AsyncError(
+      predictionsAsync.error!,
+      predictionsAsync.stackTrace ?? StackTrace.current,
+    );
+  }
+  if (transactionsAsync.hasError) {
+    return AsyncError(
+      transactionsAsync.error!,
+      transactionsAsync.stackTrace ?? StackTrace.current,
+    );
+  }
+
+  final calculator = ref.watch(budgetVarianceCalculatorProvider);
+  final result = calculator.calculate(
+    categories: categoriesAsync.value!,
+    predictions: predictionsAsync.value!,
+    transactions: transactionsAsync.value!,
+  );
+  return AsyncData(result);
 });
 
 final goalContributionsProvider =

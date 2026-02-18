@@ -6,6 +6,7 @@ import 'package:finora/core/theme/app_theme.dart';
 import 'package:finora/core/theme/app_tokens.dart';
 import 'package:finora/core/widgets/finora_page_scaffold.dart';
 import 'package:finora/features/goals/presentation/goals_screen.dart';
+import 'package:finora/features/insights/presentation/insights_screen.dart';
 import 'package:finora/features/transactions/presentation/dashboard_overview.dart';
 import 'package:finora/features/transactions/presentation/transactions_providers.dart';
 import 'package:finora/features/transactions/presentation/transactions_screen.dart';
@@ -50,12 +51,13 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
     final pageTitle = switch (_selectedTab) {
       0 => 'Overview',
       1 => 'Transactions',
-      _ => 'Goals',
+      2 => 'Goals',
+      _ => 'Insights',
     };
 
     return FinoraPageScaffold(
       title: pageTitle,
-      subtitle: 'Epic 4 goals and surplus allocation',
+      subtitle: 'Goals, surplus allocation, and insights',
       selectedMonth: selectedMonth,
       onMonthChanged: (month) {
         ref.read(selectedMonthProvider.notifier).state = DateTime(
@@ -81,6 +83,11 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
             label: const Text('Goals'),
             selected: _selectedTab == 2,
             onSelected: (_) => setState(() => _selectedTab = 2),
+          ),
+          ChoiceChip(
+            label: const Text('Insights'),
+            selected: _selectedTab == 3,
+            onSelected: (_) => setState(() => _selectedTab = 3),
           ),
           if (_selectedTab == 1)
             FilledButton(
@@ -144,7 +151,10 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
           if (_selectedTab == 1) {
             return const TransactionsScreen();
           }
-          return const GoalsScreen();
+          if (_selectedTab == 2) {
+            return const GoalsScreen();
+          }
+          return const InsightsScreen();
         },
         loading: () => const Center(
           child: CircularProgressIndicator(),
