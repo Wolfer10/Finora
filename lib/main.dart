@@ -7,6 +7,7 @@ import 'package:finora/core/theme/app_tokens.dart';
 import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_page_scaffold.dart';
 import 'package:finora/features/accounts/presentation/accounts_screen.dart';
+import 'package:finora/features/categories/presentation/categories_screen.dart';
 import 'package:finora/features/goals/presentation/goals_screen.dart';
 import 'package:finora/features/insights/presentation/insights_screen.dart';
 import 'package:finora/features/transactions/presentation/dashboard_overview.dart';
@@ -62,7 +63,8 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
       1 => 'Transactions',
       2 => 'Goals',
       3 => 'Insights',
-      _ => 'Accounts',
+      4 => 'Accounts',
+      _ => 'Categories',
     };
 
     return FinoraPageScaffold(
@@ -104,6 +106,11 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
             selected: _selectedTab == 4,
             onSelected: (_) => setState(() => _selectedTab = 4),
           ),
+          ChoiceChip(
+            label: const Text('Categories'),
+            selected: _selectedTab == 5,
+            onSelected: (_) => setState(() => _selectedTab = 5),
+          ),
           if (_selectedTab == 1)
             FilledButton(
               onPressed: () async {
@@ -133,6 +140,16 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
                 );
               },
               child: const Text('Add Account'),
+            ),
+          if (_selectedTab == 5)
+            FilledButton(
+              onPressed: () async {
+                await showDialog<void>(
+                  context: context,
+                  builder: (context) => const AddCategoryDialog(),
+                );
+              },
+              child: const Text('Add Category'),
             ),
           PopupMenuButton<_TopBarAction>(
             tooltip: 'More actions',
@@ -173,7 +190,10 @@ class _FinoraEpic3ShellState extends ConsumerState<FinoraEpic3Shell> {
           if (_selectedTab == 3) {
             return const InsightsScreen();
           }
-          return const AccountsScreen();
+          if (_selectedTab == 4) {
+            return const AccountsScreen();
+          }
+          return const CategoriesScreen();
         },
         loading: () => const Center(
           child: CircularProgressIndicator(),

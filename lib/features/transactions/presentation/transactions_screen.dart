@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:finora/core/theme/app_tokens.dart';
+import 'package:finora/core/utils/color_utils.dart';
 import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_card.dart';
 import 'package:finora/features/accounts/domain/account.dart';
@@ -17,6 +18,10 @@ class TransactionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final transactionsAsync = ref.watch(transactionsByMonthProvider);
+    final categories = ref.watch(activeCategoriesProvider).valueOrNull ?? const <Category>[];
+    final categoryById = {
+      for (final category in categories) category.id: category,
+    };
     return transactionsAsync.when(
       data: (transactions) {
         if (transactions.isEmpty) {
@@ -34,6 +39,7 @@ class TransactionsScreen extends ConsumerWidget {
               for (final transaction in transactions) ...[
                 _TransactionRow(
                   transaction: transaction,
+                  category: categoryById[transaction.categoryId],
                   onEdit: () async {
                     await showDialog<void>(
                       context: context,
@@ -449,61 +455,92 @@ class _ExpenseTransactionForm extends StatelessWidget {
 class _TransactionRow extends StatelessWidget {
   const _TransactionRow({
     required this.transaction,
+    required this.category,
     required this.onEdit,
     required this.onDelete,
   });
 
   final Transaction transaction;
+  final Category? category;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
     final dateLabel = MaterialLocalizations.of(context).formatMediumDate(
       transaction.date,
     );
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                transaction.note ?? transaction.categoryId,
-                style: textTheme.bodyLarge,
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                dateLabel,
-                style: textTheme.bodySmall,
-              ),
-            ],
+    final categoryColor = parseHexColor(
+      category?.color,
+      _typeColor(transaction.type),
+    );
+    final backgroundColor = Color.alphaBlend(
+      categoryColor.withOpacity(0.10),
+      colorScheme.surface,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: categoryColor.withOpacity(0.45)),
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 4,
+            height: AppSizes.iconLg,
+            decoration: BoxDecoration(
+              color: categoryColor,
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
           ),
-        ),
-        Text(
-          MoneyFormatter.format(transaction.amount),
-          style: textTheme.bodyLarge?.copyWith(
-            color: _typeColor(transaction.type),
-            fontWeight: FontWeight.w600,
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  transaction.note ?? category?.name ?? transaction.categoryId,
+                  style: textTheme.bodyLarge,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  '${category?.name ?? transaction.categoryId} | $dateLabel',
+                  style: textTheme.bodySmall,
+                ),
+              ],
+            ),
           ),
+          Text(
+            MoneyFormatter.format(transaction.amount),
+            style: textTheme.bodyLarge?.copyWith(
+              color: _typeColor(transaction.type),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          IconButton(
+            tooltip: 'Edit transaction',
+            onPressed:
+                transaction.type == TransactionType.expense ? onEdit : null,
+            icon: const Icon(Icons.edit_outlined),
+            iconSize: AppSizes.iconSm,
+          ),
+          IconButton(
+            tooltip: 'Delete transaction',
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline),
+            iconSize: AppSizes.iconSm,
+          ),
+      ]
         ),
-        const SizedBox(width: AppSpacing.sm),
-        IconButton(
-          tooltip: 'Edit transaction',
-          onPressed:
-              transaction.type == TransactionType.expense ? onEdit : null,
-          icon: const Icon(Icons.edit_outlined),
-          iconSize: AppSizes.iconSm,
-        ),
-        IconButton(
-          tooltip: 'Delete transaction',
-          onPressed: onDelete,
-          icon: const Icon(Icons.delete_outline),
-          iconSize: AppSizes.iconSm,
-        ),
-      ],
     );
   }
 

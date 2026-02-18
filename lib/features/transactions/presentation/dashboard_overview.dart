@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:finora/core/theme/app_tokens.dart';
+import 'package:finora/core/utils/color_utils.dart';
 import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_card.dart';
+import 'package:finora/features/categories/domain/category.dart';
 import 'package:finora/features/transactions/domain/transaction.dart'
     as tx_domain;
 import 'package:finora/features/transactions/domain/transaction_repository.dart'
@@ -92,6 +94,10 @@ class _RecentTransactionsView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final textTheme = Theme.of(context).textTheme;
+    final categories = ref.watch(activeCategoriesProvider).valueOrNull ?? const <Category>[];
+    final categoryById = {
+      for (final category in categories) category.id: category,
+    };
     if (transactions.isEmpty) {
       return Text(
         'No transactions yet. Add your first expense from the Transactions tab.',
@@ -107,6 +113,7 @@ class _RecentTransactionsView extends ConsumerWidget {
         for (final tx in transactions) ...[
           _RecentTransactionRow(
             transaction: tx,
+            category: categoryById[tx.categoryId],
             onEdit: () async {
               await showDialog<void>(
                 context: context,
@@ -171,47 +178,89 @@ class _RecentTransactionsView extends ConsumerWidget {
 class _RecentTransactionRow extends StatelessWidget {
   const _RecentTransactionRow({
     required this.transaction,
+    required this.category,
     required this.onEdit,
     required this.onDelete,
   });
 
   final tx_domain.Transaction transaction;
+  final Category? category;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            transaction.note ?? transaction.categoryId,
-            style: Theme.of(context).textTheme.bodyLarge,
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final categoryColor = parseHexColor(
+      category?.color,
+      _typeColor(transaction.type),
+    );
+    final backgroundColor = Color.alphaBlend(
+      categoryColor.withOpacity(0.10),
+      colorScheme.surface,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: categoryColor.withOpacity(0.45)),
+      ),
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.sm,
+        vertical: AppSpacing.xs,
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: AppSizes.iconLg,
+            decoration: BoxDecoration(
+              color: categoryColor,
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
           ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  transaction.note ?? category?.name ?? transaction.categoryId,
+                  style: textTheme.bodyLarge,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  category?.name ?? transaction.categoryId,
+                  style: textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+          Text(
+            MoneyFormatter.format(transaction.amount),
+            style: textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: _typeColor(transaction.type),
+                ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          IconButton(
+            tooltip: 'Edit transaction',
+            onPressed: transaction.type == tx_domain.TransactionType.expense
+                ? onEdit
+                : null,
+            icon: const Icon(Icons.edit_outlined),
+            iconSize: AppSizes.iconSm,
+          ),
+          IconButton(
+            tooltip: 'Delete transaction',
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline),
+            iconSize: AppSizes.iconSm,
+          ),
+      ]
         ),
-        Text(
-          MoneyFormatter.format(transaction.amount),
-          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: _typeColor(transaction.type),
-              ),
-        ),
-        const SizedBox(width: AppSpacing.sm),
-        IconButton(
-          tooltip: 'Edit transaction',
-          onPressed: transaction.type == tx_domain.TransactionType.expense
-              ? onEdit
-              : null,
-          icon: const Icon(Icons.edit_outlined),
-          iconSize: AppSizes.iconSm,
-        ),
-        IconButton(
-          tooltip: 'Delete transaction',
-          onPressed: onDelete,
-          icon: const Icon(Icons.delete_outline),
-          iconSize: AppSizes.iconSm,
-        ),
-      ],
     );
   }
 

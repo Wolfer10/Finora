@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:finora/core/theme/app_tokens.dart';
+import 'package:finora/core/utils/color_utils.dart';
 import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_card.dart';
+import 'package:finora/features/categories/domain/category.dart';
+import 'package:finora/features/predictions/domain/budget_variance_calculator.dart';
 import 'package:finora/features/transactions/presentation/transactions_providers.dart';
 
 class InsightsScreen extends ConsumerWidget {
@@ -126,6 +129,14 @@ class _InsightsBudgetTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final varianceAsync = ref.watch(budgetVarianceProvider);
+    final categories = ref.watch(expenseCategoriesProvider).valueOrNull ?? const <Category>[];
+    final colorByCategoryId = <String, Color>{
+      for (final category in categories)
+        category.id: parseHexColor(
+          category.color,
+          Theme.of(context).colorScheme.outlineVariant,
+        ),
+    };
     return varianceAsync.when(
       data: (variance) {
         if (variance.items.isEmpty) {
@@ -155,16 +166,9 @@ class _InsightsBudgetTab extends ConsumerWidget {
             ),
             const SizedBox(height: AppSpacing.md),
             for (final item in variance.items) ...[
-              Text(
-                item.categoryName,
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: AppSpacing.xs),
-              Text(
-                'Predicted ${MoneyFormatter.format(item.predicted)} | '
-                'Actual ${MoneyFormatter.format(item.actual)} | '
-                'Variance ${MoneyFormatter.format(item.variance)}',
-                style: Theme.of(context).textTheme.bodyMedium,
+              _BudgetCategoryRow(
+                item: item,
+                color: colorByCategoryId[item.categoryId] ?? AppColors.transfer,
               ),
               const SizedBox(height: AppSpacing.md),
             ],
@@ -173,6 +177,65 @@ class _InsightsBudgetTab extends ConsumerWidget {
       },
       loading: () => const _TabLoading(label: 'Loading budget variance...'),
       error: (error, _) => _TabError(message: 'Budget variance failed: $error'),
+    );
+  }
+}
+
+class _BudgetCategoryRow extends StatelessWidget {
+  const _BudgetCategoryRow({
+    required this.item,
+    required this.color,
+  });
+
+  final BudgetVarianceItem item;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final backgroundColor = Color.alphaBlend(
+      color.withOpacity(0.10),
+      colorScheme.surface,
+    );
+    return Container(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(AppRadii.md),
+        border: Border.all(color: color.withOpacity(0.45)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 4,
+            height: AppSizes.iconLg,
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(AppRadii.sm),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.categoryName,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  'Predicted ${MoneyFormatter.format(item.predicted)} | '
+                  'Actual ${MoneyFormatter.format(item.actual)} | '
+                  'Variance ${MoneyFormatter.format(item.variance)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

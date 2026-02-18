@@ -145,6 +145,11 @@ final accountNotifierProvider = NotifierProvider<AccountNotifier, AsyncValue<voi
   AccountNotifier.new,
 );
 
+final categoryNotifierProvider =
+    NotifierProvider<CategoryNotifier, AsyncValue<void>>(
+  CategoryNotifier.new,
+);
+
 final goalNotifierProvider = NotifierProvider<GoalNotifier, AsyncValue<void>>(
   GoalNotifier.new,
 );
@@ -365,6 +370,69 @@ class AccountNotifier extends Notifier<AsyncValue<void>> {
   }
 }
 
+class CategoryNotifier extends Notifier<AsyncValue<void>> {
+  @override
+  AsyncValue<void> build() => const AsyncData(null);
+
+  Future<void> createCategory({
+    required String name,
+    required category_domain.CategoryType type,
+    required String icon,
+    required String color,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final now = DateTime.now();
+      await ref.read(categoryRepositoryProvider).create(
+            category_domain.Category(
+              id: _generateId('cat'),
+              name: name.trim(),
+              type: type,
+              icon: icon.trim(),
+              color: color.trim(),
+              isDefault: false,
+              createdAt: now,
+              updatedAt: now,
+              isDeleted: false,
+            ),
+          );
+    });
+  }
+
+  Future<void> updateCategory({
+    required category_domain.Category category,
+    required String name,
+    required category_domain.CategoryType type,
+    required String icon,
+    required String color,
+  }) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(categoryRepositoryProvider).update(
+            category.copyWith(
+              name: name.trim(),
+              type: type,
+              icon: icon.trim(),
+              color: color.trim(),
+              updatedAt: DateTime.now(),
+            ),
+          );
+    });
+  }
+
+  Future<void> deleteCategory(String categoryId) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(categoryRepositoryProvider).softDelete(categoryId);
+    });
+  }
+
+  static String _generateId(String prefix) {
+    final microseconds = DateTime.now().microsecondsSinceEpoch;
+    return '$prefix-$microseconds';
+  }
+}
+
 class SettingsNotifier extends Notifier<AsyncValue<void>> {
   @override
   AsyncValue<void> build() => const AsyncData(null);
@@ -557,6 +625,13 @@ final activeAccountsProvider =
     StreamProvider<List<account_domain.Account>>((ref) {
   ref.watch(dataRefreshTickProvider);
   final repository = ref.watch(accountRepositoryProvider);
+  return repository.watchAllActive();
+});
+
+final activeCategoriesProvider =
+    StreamProvider<List<category_domain.Category>>((ref) {
+  ref.watch(dataRefreshTickProvider);
+  final repository = ref.watch(categoryRepositoryProvider);
   return repository.watchAllActive();
 });
 
