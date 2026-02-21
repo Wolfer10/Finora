@@ -6,6 +6,9 @@ import 'package:finora/core/utils/color_utils.dart';
 import 'package:finora/core/utils/money_formatter.dart';
 import 'package:finora/core/widgets/finora_card.dart';
 import 'package:finora/features/categories/domain/category.dart';
+import 'package:finora/features/insights/domain/goal_progress_calculator.dart';
+import 'package:finora/features/insights/domain/net_worth_calculator.dart';
+import 'package:finora/features/insights/presentation/insights_providers.dart';
 import 'package:finora/features/predictions/domain/budget_variance_calculator.dart';
 import 'package:finora/features/transactions/presentation/transactions_providers.dart';
 
@@ -15,25 +18,31 @@ class InsightsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return const DefaultTabController(
-      length: 3,
+      length: 5,
       child: FinoraCard(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
               tabs: [
                 Tab(text: 'Overview'),
+                Tab(text: 'Net Worth'),
                 Tab(text: 'Categories'),
+                Tab(text: 'Goals'),
                 Tab(text: 'Budget'),
               ],
             ),
             SizedBox(height: AppSpacing.md),
             SizedBox(
-              height: 420,
+              height: 520,
               child: TabBarView(
                 children: [
                   _InsightsOverviewTab(),
+                  _InsightsNetWorthTab(),
                   _InsightsCategoriesTab(),
+                  _InsightsGoalsTab(),
                   _InsightsBudgetTab(),
                 ],
               ),
@@ -50,26 +59,26 @@ class _InsightsOverviewTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final totalsAsync = ref.watch(monthlyTotalsProvider);
-    return totalsAsync.when(
-      data: (totals) => ListView(
+    final overviewAsync = ref.watch(insightsOverviewProvider);
+    return overviewAsync.when(
+      data: (overview) => ListView(
         children: [
           _MetricRow(
             label: 'Income',
-            value: MoneyFormatter.format(totals.incomeTotal),
+            value: MoneyFormatter.format(overview.income),
             color: AppColors.income,
           ),
           const SizedBox(height: AppSpacing.sm),
           _MetricRow(
             label: 'Expense',
-            value: MoneyFormatter.format(totals.expenseTotal),
+            value: MoneyFormatter.format(overview.expense),
             color: AppColors.expense,
           ),
           const SizedBox(height: AppSpacing.sm),
           _MetricRow(
             label: 'Net',
-            value: MoneyFormatter.format(totals.net),
-            color: totals.net >= 0 ? AppColors.income : AppColors.expense,
+            value: MoneyFormatter.format(overview.net),
+            color: overview.net >= 0 ? AppColors.income : AppColors.expense,
           ),
         ],
       ),
@@ -79,46 +88,105 @@ class _InsightsOverviewTab extends ConsumerWidget {
   }
 }
 
+class _InsightsNetWorthTab extends ConsumerWidget {
+  const _InsightsNetWorthTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final netWorthAsync = ref.watch(insightsNetWorthProvider);
+    return netWorthAsync.when(
+      data: (result) {
+        if (result.accounts.isEmpty) {
+          return const Text('No accounts found for net worth view.');
+        }
+
+        return ListView(
+          children: [
+            _MetricRow(
+              label: 'Assets',
+              value: MoneyFormatter.format(result.assets),
+              color: AppColors.income,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _MetricRow(
+              label: 'Liabilities',
+              value: MoneyFormatter.format(result.liabilities),
+              color: AppColors.expense,
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _MetricRow(
+              label: 'Net Worth',
+              value: MoneyFormatter.format(result.netWorth),
+              color: result.netWorth >= 0 ? AppColors.income : AppColors.expense,
+            ),
+            const SizedBox(height: AppSpacing.md),
+            for (final account in result.accounts) ...[
+              _NetWorthAccountRow(account: account),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+          ],
+        );
+      },
+      loading: () => const _TabLoading(label: 'Loading net worth...'),
+      error: (error, _) => _TabError(message: 'Net worth failed: $error'),
+    );
+  }
+}
+
 class _InsightsCategoriesTab extends ConsumerWidget {
   const _InsightsCategoriesTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final categoriesAsync = ref.watch(expenseCategoriesProvider);
-    final totalsAsync = ref.watch(categoryExpenseTotalsProvider);
+    final categoryItemsAsync = ref.watch(insightsCategoryBreakdownProvider);
+    return categoryItemsAsync.when(
+      data: (items) {
+        if (items.isEmpty) {
+          return const Text('No category expenses in this month.');
+        }
 
-    if (categoriesAsync.isLoading || totalsAsync.isLoading) {
-      return const _TabLoading(label: 'Loading categories...');
-    }
-    if (categoriesAsync.hasError) {
-      return _TabError(message: 'Categories failed: ${categoriesAsync.error}');
-    }
-    if (totalsAsync.hasError) {
-      return _TabError(message: 'Category totals failed: ${totalsAsync.error}');
-    }
-
-    final nameById = <String, String>{
-      for (final category in categoriesAsync.value!) category.id: category.name,
-    };
-    final items = totalsAsync.value!.entries.toList(growable: false)
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    if (items.isEmpty) {
-      return const Text('No category expenses in this month.');
-    }
-
-    return ListView.separated(
-      itemCount: items.length,
-      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
-      itemBuilder: (context, index) {
-        final item = items[index];
-        final label = nameById[item.key] ?? item.key;
-        return _MetricRow(
-          label: label,
-          value: MoneyFormatter.format(item.value),
-          color: AppColors.expense,
+        return ListView.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.sm),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return _MetricRow(
+              label: item.categoryName,
+              value: MoneyFormatter.format(item.total),
+              color: AppColors.expense,
+            );
+          },
         );
       },
+      loading: () => const _TabLoading(label: 'Loading categories...'),
+      error: (error, _) => _TabError(message: 'Categories failed: $error'),
+    );
+  }
+}
+
+class _InsightsGoalsTab extends ConsumerWidget {
+  const _InsightsGoalsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final goalProgressAsync = ref.watch(insightsGoalProgressProvider);
+    return goalProgressAsync.when(
+      data: (items) {
+        if (items.isEmpty) {
+          return const Text('No goals yet. Add goals to track progress here.');
+        }
+
+        return ListView.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.md),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return _GoalProgressRow(item: item);
+          },
+        );
+      },
+      loading: () => const _TabLoading(label: 'Loading goals progress...'),
+      error: (error, _) => _TabError(message: 'Goals progress failed: $error'),
     );
   }
 }
@@ -128,7 +196,7 @@ class _InsightsBudgetTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final varianceAsync = ref.watch(budgetVarianceProvider);
+    final varianceAsync = ref.watch(insightsBudgetVarianceProvider);
     final categories = ref.watch(expenseCategoriesProvider).valueOrNull ?? const <Category>[];
     final colorByCategoryId = <String, Color>{
       for (final category in categories)
@@ -177,6 +245,51 @@ class _InsightsBudgetTab extends ConsumerWidget {
       },
       loading: () => const _TabLoading(label: 'Loading budget variance...'),
       error: (error, _) => _TabError(message: 'Budget variance failed: $error'),
+    );
+  }
+}
+
+class _NetWorthAccountRow extends StatelessWidget {
+  const _NetWorthAccountRow({required this.account});
+
+  final AccountNetWorthItem account;
+
+  @override
+  Widget build(BuildContext context) {
+    return _MetricRow(
+      label: account.accountName,
+      value: MoneyFormatter.format(account.balance),
+      color: account.balance >= 0 ? AppColors.income : AppColors.expense,
+    );
+  }
+}
+
+class _GoalProgressRow extends StatelessWidget {
+  const _GoalProgressRow({required this.item});
+
+  final GoalProgressItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final percentage = (item.progress * 100).round();
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _MetricRow(
+          label: item.goalName,
+          value: MoneyFormatter.format(item.savedAmount),
+          color: item.completed ? AppColors.income : AppColors.transfer,
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        LinearProgressIndicator(value: item.progress),
+        const SizedBox(height: AppSpacing.xs),
+        Text(
+          'Target ${MoneyFormatter.format(item.targetAmount)} | '
+          'Remaining ${MoneyFormatter.format(item.remainingAmount)} | '
+          '$percentage%',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ],
     );
   }
 }

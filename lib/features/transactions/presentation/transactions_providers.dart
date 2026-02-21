@@ -22,6 +22,8 @@ import 'package:finora/features/goals/domain/goal_completion_service.dart';
 import 'package:finora/features/goals/domain/goal_contribution.dart'
     as contribution_domain;
 import 'package:finora/features/goals/domain/goal_repository.dart';
+import 'package:finora/features/insights/domain/category_analytics_calculator.dart';
+import 'package:finora/features/insights/domain/monthly_summary_calculator.dart';
 import 'package:finora/features/predictions/data/prediction_repository_sql.dart';
 import 'package:finora/features/predictions/domain/budget_variance_calculator.dart';
 import 'package:finora/features/predictions/domain/monthly_prediction.dart'
@@ -37,7 +39,8 @@ import 'package:finora/features/transactions/domain/add_expense_transaction_use_
 import 'package:finora/features/transactions/domain/delete_transaction_use_case.dart';
 import 'package:finora/features/transactions/domain/recurring_rule.dart';
 import 'package:finora/features/transactions/domain/recurring_rule_repository.dart';
-import 'package:finora/features/transactions/domain/transaction.dart' as tx_domain;
+import 'package:finora/features/transactions/domain/transaction.dart'
+    as tx_domain;
 import 'package:finora/features/transactions/domain/transaction_repository.dart';
 import 'package:finora/features/transactions/domain/update_expense_transaction_use_case.dart';
 
@@ -62,7 +65,8 @@ final transactionRepositoryProvider = Provider<TransactionRepository>((ref) {
   return TransactionRepositoryDrift(TransactionDao(db));
 });
 
-final recurringRuleRepositoryProvider = Provider<RecurringRuleRepository>((ref) {
+final recurringRuleRepositoryProvider =
+    Provider<RecurringRuleRepository>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return RecurringRuleRepositorySql(db);
 });
@@ -91,8 +95,19 @@ final predictionRepositoryProvider = Provider<PredictionRepository>((ref) {
   return PredictionRepositorySql(db);
 });
 
-final budgetVarianceCalculatorProvider = Provider<BudgetVarianceCalculator>((ref) {
+final budgetVarianceCalculatorProvider =
+    Provider<BudgetVarianceCalculator>((ref) {
   return const BudgetVarianceCalculator();
+});
+
+final monthlySummaryCalculatorProvider =
+    Provider<MonthlySummaryCalculator>((ref) {
+  return const MonthlySummaryCalculator();
+});
+
+final categoryAnalyticsCalculatorProvider =
+    Provider<CategoryAnalyticsCalculator>((ref) {
+  return const CategoryAnalyticsCalculator();
 });
 
 final appSettingsProvider = StreamProvider<settings_domain.AppSettings>((ref) {
@@ -101,7 +116,8 @@ final appSettingsProvider = StreamProvider<settings_domain.AppSettings>((ref) {
   return repository.watch();
 });
 
-final calculateSurplusUseCaseProvider = Provider<CalculateSurplusUseCase>((ref) {
+final calculateSurplusUseCaseProvider =
+    Provider<CalculateSurplusUseCase>((ref) {
   final repository = ref.watch(transactionRepositoryProvider);
   return CalculateSurplusUseCase(repository);
 });
@@ -112,7 +128,8 @@ final allocateSurplusUseCaseProvider = Provider<AllocateSurplusUseCase>((ref) {
   return AllocateSurplusUseCase(repository, completionService);
 });
 
-final addGoalContributionUseCaseProvider = Provider<AddGoalContributionUseCase>((
+final addGoalContributionUseCaseProvider =
+    Provider<AddGoalContributionUseCase>((
   ref,
 ) {
   final repository = ref.watch(goalRepositoryProvider);
@@ -132,7 +149,8 @@ final updateExpenseTransactionUseCaseProvider =
   return UpdateExpenseTransactionUseCase(repository);
 });
 
-final deleteTransactionUseCaseProvider = Provider<DeleteTransactionUseCase>((ref) {
+final deleteTransactionUseCaseProvider =
+    Provider<DeleteTransactionUseCase>((ref) {
   final repository = ref.watch(transactionRepositoryProvider);
   return DeleteTransactionUseCase(repository);
 });
@@ -149,7 +167,8 @@ final transactionNotifierProvider =
   TransactionNotifier.new,
 );
 
-final accountNotifierProvider = NotifierProvider<AccountNotifier, AsyncValue<void>>(
+final accountNotifierProvider =
+    NotifierProvider<AccountNotifier, AsyncValue<void>>(
   AccountNotifier.new,
 );
 
@@ -162,7 +181,8 @@ final goalNotifierProvider = NotifierProvider<GoalNotifier, AsyncValue<void>>(
   GoalNotifier.new,
 );
 
-final settingsNotifierProvider = NotifierProvider<SettingsNotifier, AsyncValue<void>>(
+final settingsNotifierProvider =
+    NotifierProvider<SettingsNotifier, AsyncValue<void>>(
   SettingsNotifier.new,
 );
 
@@ -257,7 +277,8 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
               note: normalizedNote,
               startDate: date,
               endDate: null,
-              nextRunAt: _advanceRecurrence(date, recurrenceUnit, recurrenceInterval),
+              nextRunAt:
+                  _advanceRecurrence(date, recurrenceUnit, recurrenceInterval),
               recurrenceUnit: recurrenceUnit,
               recurrenceInterval: recurrenceInterval,
               createdAt: now,
@@ -322,7 +343,8 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
             note: normalizedNote,
             startDate: date,
             endDate: null,
-            nextRunAt: _advanceRecurrence(date, recurrenceUnit, recurrenceInterval),
+            nextRunAt:
+                _advanceRecurrence(date, recurrenceUnit, recurrenceInterval),
             recurrenceUnit: recurrenceUnit,
             recurrenceInterval: recurrenceInterval,
             createdAt: now,
@@ -449,14 +471,16 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
     });
   }
 
-  Future<void> deleteTransactionByEntity(tx_domain.Transaction transaction) async {
+  Future<void> deleteTransactionByEntity(
+      tx_domain.Transaction transaction) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final repository = ref.read(transactionRepositoryProvider);
       if (transaction.type == tx_domain.TransactionType.transfer &&
           transaction.transferGroupId != null &&
           transaction.transferGroupId!.isNotEmpty) {
-        await repository.softDeleteByTransferGroup(transaction.transferGroupId!);
+        await repository
+            .softDeleteByTransferGroup(transaction.transferGroupId!);
         return;
       }
       await repository.softDelete(transaction.id);
@@ -570,7 +594,8 @@ class TransactionNotifier extends Notifier<AsyncValue<void>> {
     String categoryId,
     tx_domain.TransactionType type,
   ) async {
-    final categories = await ref.read(categoryRepositoryProvider).watchAllActive().first;
+    final categories =
+        await ref.read(categoryRepositoryProvider).watchAllActive().first;
     category_domain.Category? category;
     for (final item in categories) {
       if (item.id == categoryId) {
@@ -965,22 +990,9 @@ final monthlyTotalsProvider = StreamProvider<MonthlyTotals>((ref) {
   ref.watch(dataRefreshTickProvider);
   final month = ref.watch(selectedMonthProvider);
   final repository = ref.watch(transactionRepositoryProvider);
+  final calculator = ref.watch(monthlySummaryCalculatorProvider);
   return repository.watchByMonth(month.year, month.month).map((transactions) {
-    var income = 0.0;
-    var expense = 0.0;
-    for (final transaction in transactions) {
-      switch (transaction.type) {
-        case tx_domain.TransactionType.income:
-          income += transaction.amount;
-          break;
-        case tx_domain.TransactionType.expense:
-          expense += transaction.amount;
-          break;
-        case tx_domain.TransactionType.transfer:
-          break;
-      }
-    }
-    return MonthlyTotals(incomeTotal: income, expenseTotal: expense);
+    return calculator.calculate(transactions: transactions);
   });
 });
 
@@ -1023,20 +1035,24 @@ final categoryExpenseTotalsProvider =
       .where((item) => item.type == category_domain.CategoryType.expense)
       .map((item) => item.id)
       .toSet();
+  final calculator = ref.watch(categoryAnalyticsCalculatorProvider);
+  final items = calculator.calculate(
+    categories: categoriesAsync.value!,
+    transactions: transactionsAsync.value!,
+    type: category_domain.CategoryType.expense,
+  );
   final totals = <String, double>{};
-  for (final tx in transactionsAsync.value!) {
-    if (tx.type != tx_domain.TransactionType.expense || tx.isDeleted) {
+  for (final item in items) {
+    if (!categoryIds.contains(item.categoryId)) {
       continue;
     }
-    if (!categoryIds.contains(tx.categoryId)) {
-      continue;
-    }
-    totals[tx.categoryId] = (totals[tx.categoryId] ?? 0) + tx.amount;
+    totals[item.categoryId] = item.total;
   }
   return AsyncData(totals);
 });
 
-final budgetVarianceProvider = Provider<AsyncValue<BudgetVarianceResult>>((ref) {
+final budgetVarianceProvider =
+    Provider<AsyncValue<BudgetVarianceResult>>((ref) {
   final categoriesAsync = ref.watch(expenseCategoriesProvider);
   final predictionsAsync = ref.watch(monthlyPredictionsProvider);
   final transactionsAsync = ref.watch(transactionsByMonthProvider);
